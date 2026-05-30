@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output (published via npm pack / CI)
+dist/
+
+# Test & coverage
+coverage/
+*.lcov
+.nyc_output
+
+# Vitest / Vite cache
+.vite/
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+
+# DynamoDB Local artifacts
+.dynamodb/
+
+# Generated schema (regenerate with payload generate:db-schema)
+src/payload-generated-dynamodb.json
+
+# Optional local overrides
+.cache/

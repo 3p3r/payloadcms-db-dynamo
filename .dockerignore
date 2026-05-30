@@ -1,0 +1,29 @@
+# Git & CI
+.git
+.github
+
+# Dependencies & build artifacts
+node_modules
+dist
+coverage
+.nyc_output
+*.lcov
+.vite
+*.tsbuildinfo
+
+# Tests & local dev
+test
+.dynamodb
+
+# Environment & secrets
+.env
+.env.*
+
+# Logs & OS
+logs
+*.log
+.DS_Store
+
+# Generated / optional
+src/payload-generated-dynamodb.json
+.cache
