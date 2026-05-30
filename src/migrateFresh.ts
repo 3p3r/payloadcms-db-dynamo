@@ -8,6 +8,7 @@ import {
   readMigrationFiles,
 } from 'payload'
 
+import { adapterError } from './packageMeta.js'
 import type { DynamoAdapter } from './types.js'
 
 import { ensureTable } from './utilities/ensureTable.js'
@@ -27,7 +28,7 @@ export const migrateFresh: BaseDatabaseAdapter['migrateFresh'] = async function 
 
   const client = this.client
   if (!client) {
-    throw new Error('@payloadcms/db-dynamodb: client is not initialized')
+    throw adapterError('client is not initialized')
   }
 
   try {

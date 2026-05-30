@@ -20,7 +20,7 @@ afterAll(async () => {
 describe('BaseDatabaseAdapter surface', () => {
   it('exposes adapter metadata', () => {
     expect(adapter.name).toBe('dynamodb')
-    expect(adapter.packageName).toBe('@payloadcms/db-dynamodb')
+    expect(adapter.packageName).toBe('payloadcms-db-dynamo')
     expect(adapter.defaultIDType).toBe('text')
     expect(adapter.migrationDir).toBeTruthy()
   })

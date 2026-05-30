@@ -1,4 +1,5 @@
 import type { DeleteVersions } from 'payload'
+import { adapterError, DOC_CLIENT_REQUIRED } from './packageMeta.js'
 
 import { DeleteCommand } from '@aws-sdk/lib-dynamodb'
 
@@ -18,12 +19,12 @@ export const deleteVersions: DeleteVersions = async function deleteVersions(
 ) {
   const docClient = this.docClient
   if (!docClient) {
-    throw new Error('payload-ddb: docClient is not initialized — call connect() first.')
+    throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   const slug = collection ?? globalSlug
   if (!slug) {
-    throw new Error('payload-ddb: deleteVersions requires either `collection` or `globalSlug`.')
+    throw adapterError('deleteVersions requires either `collection` or `globalSlug`.')
   }
 
   const partition = this.resolveVersionsPartition(slug)

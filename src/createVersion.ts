@@ -1,4 +1,5 @@
 import type { CreateVersion } from 'payload'
+import { adapterError, DOC_CLIENT_REQUIRED } from './packageMeta.js'
 
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb'
 import { randomUUID } from 'node:crypto'
@@ -42,7 +43,7 @@ export const createVersion: CreateVersion = async function createVersion(
 ) {
   const docClient = this.docClient
   if (!docClient) {
-    throw new Error('payload-ddb: docClient is not initialized — call connect() first.')
+    throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   const partition = this.resolveVersionsPartition(collectionSlug)

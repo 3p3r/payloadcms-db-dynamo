@@ -1,5 +1,6 @@
 import type { Init } from 'payload'
 
+import { PACKAGE_NAME } from './packageMeta.js'
 import type { DynamoAdapter } from './types.js'
 
 import { ensureConnected } from './utilities/ensureConnected.js'
@@ -22,11 +23,11 @@ export const init: Init = async function (this: DynamoAdapter) {
   ensureConnected(this)
 
   this.payload.logger.debug(
-    `payload-ddb: init using table \`${this.tableName}\`; ensureTables=${this.ensureTables}`,
+    `${PACKAGE_NAME}: init using table \`${this.tableName}\`; ensureTables=${this.ensureTables}`,
   )
 
   if (this.ensureTables) {
     await ensureTable(this, this.tableName)
-    this.payload.logger.debug('payload-ddb: table ready')
+    this.payload.logger.debug(`${PACKAGE_NAME}: table ready`)
   }
 }

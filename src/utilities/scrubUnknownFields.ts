@@ -2,6 +2,7 @@ import type { Payload, SanitizedGlobalConfig } from 'payload'
 
 import { PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
 
+import { adapterError } from '../packageMeta.js'
 import type { DynamoAdapter } from '../types.js'
 
 import {
@@ -27,7 +28,7 @@ import { stripInternalKeys } from './stripInternalKeys.js'
  * @example
  *   import { getPayload } from 'payload'
  *   import config from './payload.config'
- *   import { scrubUnknownFields } from '@aih-software/payload-ddb'
+ *   import { scrubUnknownFields } from 'payloadcms-db-dynamo'
  *
  *   const payload = await getPayload({ config })
  *   const report = await scrubUnknownFields(payload)
@@ -44,7 +45,7 @@ export interface ScrubReport {
 export async function scrubUnknownFields(payload: Payload): Promise<ScrubReport> {
   const adapter = payload.db as unknown as DynamoAdapter
   if (!adapter.docClient) {
-    throw new Error('payload-ddb: scrubUnknownFields requires a connected adapter.')
+    throw adapterError('scrubUnknownFields requires a connected adapter.')
   }
 
   const report: ScrubReport = {

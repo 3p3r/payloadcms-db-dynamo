@@ -1,6 +1,7 @@
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb'
 import type { CommitTransaction } from 'payload'
 
+import { adapterError } from '../packageMeta.js'
 import type { DynamoAdapter } from '../types.js'
 
 const MAX_TRANSACT_ITEMS = 100
@@ -15,7 +16,7 @@ export const commitTransaction: CommitTransaction = async function commitTransac
 
   const docClient = this.docClient
   if (!docClient) {
-    throw new Error('@payloadcms/db-dynamodb: client is not initialized')
+    throw adapterError('client is not initialized')
   }
 
   delete this.transactionSessions[String(transactionID)]

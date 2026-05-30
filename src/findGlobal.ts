@@ -1,4 +1,5 @@
 import type { FindGlobal } from 'payload'
+import { adapterError, DOC_CLIENT_REQUIRED } from './packageMeta.js'
 
 import { GetCommand } from '@aws-sdk/lib-dynamodb'
 
@@ -21,7 +22,7 @@ export const findGlobal: FindGlobal = async function findGlobal(
 ) {
   const docClient = this.docClient
   if (!docClient) {
-    throw new Error('payload-ddb: docClient is not initialized — call connect() first.')
+    throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   const result = await docClient.send(

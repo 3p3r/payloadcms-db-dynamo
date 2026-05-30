@@ -2,6 +2,7 @@ import type { DatabaseAdapterObj, Payload } from 'payload'
 
 import { createDatabaseAdapter, findMigrationDir } from 'payload'
 
+import { PACKAGE_NAME } from './packageMeta.js'
 import type { Args, DynamoAdapter } from './types.js'
 
 import { generateSchema } from './generateSchema.js'
@@ -37,12 +38,12 @@ import { updateOne } from './updateOne.js'
 import { updateVersion } from './updateVersion.js'
 import { upsert } from './upsert.js'
 
+export { PACKAGE_NAME } from './packageMeta.js'
 export type { Args, DynamoAdapter } from './types.js'
 export { scrubUnknownFields } from './utilities/scrubUnknownFields.js'
 export type { ScrubReport } from './utilities/scrubUnknownFields.js'
 
 const NAME = 'dynamodb'
-const PACKAGE_NAME = '@payloadcms/db-dynamodb'
 const DEFAULT_TABLE_NAME = 'payload'
 
 declare module 'payload' {

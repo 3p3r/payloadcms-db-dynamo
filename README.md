@@ -1,71 +1,114 @@
-# @payloadcms/db-dynamodb
+# payloadcms-db-dynamo
 
-DynamoDB database adapter for [Payload CMS](https://payloadcms.com) using a **single-table** design (`pk` + `sk`) with optional GSIs for list/sort, inverted indexes, and geo queries.
+DynamoDB database adapter for [Payload CMS](https://payloadcms.com). Stores collections, globals, and version rows in a **single-table** layout (`pk` + `sk`) with optional GSIs for sorting, inverted indexes, and geo queries.
 
 ## Requirements
 
-- Payload `>=3.49.0 <5.0.0`
+- [Payload](https://payloadcms.com) `>=3.49.0 <5.0.0`
 - Node.js 20+
-- [DynamoDB Local 3.x](https://hub.docker.com/r/amazon/dynamodb-local) for development and tests
 
-## Installation
+## Install
 
 ```bash
-npm install @payloadcms/db-dynamodb payload
+npm install payloadcms-db-dynamo payload
 ```
 
-## Usage
+## Configure
 
 ```ts
 import { buildConfig } from 'payload'
-import { dynamoAdapter } from '@payloadcms/db-dynamodb'
+import { dynamoAdapter } from 'payloadcms-db-dynamo'
 
 export default buildConfig({
   db: dynamoAdapter({
     tableName: 'payload',
-    ensureTables: true, // dev only — provision table + GSIs on init
+    // Optional: create the table on init (local dev / DynamoDB Local only).
+    // In AWS, provision the table with IaC instead.
+    ensureTables: true,
     clientConfig: {
-      region: 'us-east-1',
+      region: process.env.AWS_REGION ?? 'us-east-1',
       endpoint: process.env.DYNAMODB_ENDPOINT, // e.g. http://localhost:8000
       credentials: {
-        accessKeyId: 'test',
-        secretAccessKey: 'test',
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? 'test',
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? 'test',
       },
     },
   }),
-  // ...
+  // collections, globals, ...
 })
 ```
 
-## Generate table schema
+### Options (common)
+
+| Option | Description |
+|--------|-------------|
+| `tableName` | Physical DynamoDB table name (default `payload`). |
+| `clientConfig` | Passed to `DynamoDBClient` (region, endpoint, credentials, retries). |
+| `client` | Inject an existing `DynamoDBClient` (adapter will not destroy it). |
+| `ensureTables` | When `true`, create the table and GSIs during `init` if missing. |
+| `migrationDir` | Directory for migration files (default `migrations`). |
+| `bulkOperationsSingleTransaction` | Buffer bulk writes into one transaction per request when possible. |
+
+## Table schema
+
+Generate a JSON (or TypeScript) description of the table, GSIs, and per-collection metadata:
 
 ```bash
-payload generate:db-schema
+npx payload generate:db-schema
 ```
 
-Emits `payload-generated-dynamodb.json` (or a path via `generateSchema({ outputFile })`) with `CreateTable` input, GSI definitions, and per-collection index/geo metadata.
+By default this writes `src/payload-generated-dynamodb.json`. Pass `generateSchema({ outputFile: '...' })` on the adapter to customize the path.
 
-## Integration tests (definition of done)
+Use that output with your IaC tool (CDK, Terraform, CloudFormation) to provision the table in AWS.
 
-```bash
-npm run docker:start   # amazon/dynamodb-local:3.x on :8000
-npm test               # integration + unit tests, ≥95% src coverage (single worker)
-npm run test:unit      # unit tests only (no DynamoDB)
-npm run build          # esbuild + TypeScript declarations
+## Migrations
+
+Works with Payload’s migration commands (`migrate`, `migrate:status`, `migrate:down`, `migrate:reset`, `migrate:fresh`). Point `migrationDir` at your project’s migration folder.
+
+`migrateFresh` drops and recreates the table, then re-runs migrations — destructive; use only in development.
+
+## Transactions
+
+Supports Payload request transactions via buffered `TransactWriteItems` (`beginTransaction` / `commitTransaction` / `rollbackTransaction`).
+
+## Query & data behavior
+
+- **Where operators:** `equals`, comparisons, `in` / `not_in` / `all`, `exists`, `like` / `not_like` / `contains`, `and` / `or`, plus geo `near` / `within` / `intersects` on `point` fields.
+- **Join fields:** Resolved on `find` / `findOne`.
+- **Strict writes:** Unknown fields in request bodies are stripped on write (same idea as strict SQL/ODM adapters), including nested groups, arrays, and blocks.
+
+## One-shot cleanup after upgrade
+
+If rows were written before strict projection was enabled, run the exported helper once:
+
+```ts
+import { getPayload } from 'payload'
+import config from './payload.config'
+import { scrubUnknownFields } from 'payloadcms-db-dynamo'
+
+const payload = await getPayload({ config })
+const report = await scrubUnknownFields(payload)
+console.log(report)
+await payload.destroy()
 ```
 
-Vitest runs with `maxWorkers: 1` so integration suites (each booting Payload) do not OOM constrained environments like WSL.
+## Typing migrations (optional)
 
-Override host/port with `PAYLOAD_DDB_TEST_HOST` and `PAYLOAD_DDB_TEST_PORT` (default `localhost:8000`).
+Migration files receive `{ payload, req, session }` from Payload. For TypeScript migrations, import the argument types:
 
-## Features
+```ts
+import type { MigrateDownArgs, MigrateUpArgs } from 'payloadcms-db-dynamo/migration-utils'
 
-- Full `BaseDatabaseAdapter` coverage (CRUD, versions, drafts, globals, migrations, `generateSchema`)
-- Payload-context **transactions** (`beginTransaction` / `commitTransaction` / `rollbackTransaction`) via buffered `TransactWriteItems`
-- Geo operators: `near`, `within`, `intersects` on `point` fields
-- Query operators: `equals`, comparisons, `in` / `not_in` / `all`, `exists`, `like` / `not_like` / `contains`, `and` / `or`
-- Join field resolution on `find` / `findOne`
-- Strict field projection (unknown keys stripped on write)
+export async function up({ payload }: MigrateUpArgs) {
+  // ...
+}
+
+export async function down({ payload }: MigrateDownArgs) {
+  // ...
+}
+```
+
+Plain `.js` migrations do not need this import.
 
 ## License
 

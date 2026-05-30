@@ -1,4 +1,5 @@
 import type { Where } from 'payload'
+import { adapterError, DOC_CLIENT_REQUIRED } from '../packageMeta.js'
 
 import { QueryCommand } from '@aws-sdk/lib-dynamodb'
 
@@ -33,7 +34,7 @@ export async function queryMatching(
 ): Promise<Record<string, unknown>[]> {
   const docClient = adapter.docClient
   if (!docClient) {
-    throw new Error('payload-ddb: docClient is not initialized — call connect() first.')
+    throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   // When `where` uses an operator we can't faithfully push down (today: `like`,

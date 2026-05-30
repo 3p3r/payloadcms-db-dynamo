@@ -1,4 +1,5 @@
 import type { Where } from 'payload'
+import { adapterError, DOC_CLIENT_REQUIRED } from '../packageMeta.js'
 
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
 
@@ -31,7 +32,7 @@ export async function findFirst(
 ): Promise<null | Record<string, unknown>> {
   const docClient = adapter.docClient
   if (!docClient) {
-    throw new Error('payload-ddb: docClient is not initialized — call connect() first.')
+    throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   const { partition } = args

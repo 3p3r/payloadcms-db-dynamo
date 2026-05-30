@@ -1,4 +1,5 @@
 import type { UpdateGlobal } from 'payload'
+import { adapterError, DOC_CLIENT_REQUIRED } from './packageMeta.js'
 
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb'
 
@@ -20,7 +21,7 @@ export const updateGlobal: UpdateGlobal = async function updateGlobal(
 ) {
   const docClient = this.docClient
   if (!docClient) {
-    throw new Error('payload-ddb: docClient is not initialized — call connect() first.')
+    throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   const partition = this.resolvePartition(slug)

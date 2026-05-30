@@ -78,7 +78,7 @@ describe('drafts collection — find / queryDrafts / supplements', () => {
 
   it('a draft-only doc (never published) is surfaced by find() via the supplement path', async () => {
     // Creating with `_status: 'draft'` writes a version row but the main
-    // partition won't have the doc — payload-ddb's `find` unions in
+    // partition won't have the doc — adapter `find` unions in
     // latest=true version rows for collections with drafts enabled.
     const created = await handle.payload.create({
       collection: 'drafts-on',

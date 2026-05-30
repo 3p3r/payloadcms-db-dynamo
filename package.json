@@ -1,7 +1,7 @@
 {
-  "name": "@payloadcms/db-dynamodb",
+  "name": "payloadcms-db-dynamo",
   "version": "0.1.0",
-  "description": "DynamoDB database adapter for Payload CMS",
+  "description": "DynamoDB database adapter for Payload CMS (single-table design)",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,10 +17,13 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "node scripts/build.mjs && tsc --emitDeclarationOnly",
+    "prepublishOnly": "npm run build",
     "docker:start": "docker compose up -d dynamodb-local",
     "docker:stop": "docker compose down",
     "docker:logs": "docker compose logs -f dynamodb-local",
@@ -29,6 +32,29 @@
     "test:watch": "vitest",
     "test:integration": "vitest run test/**/*.int.spec.ts",
     "typecheck:test": "tsc -p test/tsconfig.json"
+  },
+  "keywords": [
+    "payload",
+    "payloadcms",
+    "dynamodb",
+    "database",
+    "adapter",
+    "cms",
+    "headless"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/3p3r/payloadcms-db-dynamo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/3p3r/payloadcms-db-dynamo/issues"
+  },
+  "homepage": "https://github.com/3p3r/payloadcms-db-dynamo#readme",
+  "publishConfig": {
+    "access": "public"
   },
   "peerDependencies": {
     "payload": ">=3.49.0 <5.0.0"

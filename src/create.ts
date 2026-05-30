@@ -1,4 +1,5 @@
 import type { Create } from 'payload'
+import { adapterError, DOC_CLIENT_REQUIRED } from './packageMeta.js'
 
 import { PutCommand } from '@aws-sdk/lib-dynamodb'
 import { randomUUID } from 'node:crypto'
@@ -16,7 +17,7 @@ export const create: Create = async function create(
 ) {
   const docClient = this.docClient
   if (!docClient) {
-    throw new Error('payload-ddb: docClient is not initialized — call connect() first.')
+    throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   const id = customID ?? data['id'] ?? randomUUID()

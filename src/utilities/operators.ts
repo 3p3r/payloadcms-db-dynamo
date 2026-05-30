@@ -1,5 +1,7 @@
 import type { Where } from 'payload'
 
+import { PACKAGE_NAME } from '../packageMeta.js'
+
 /**
  * The where-operator coverage shared by `matchesWhere` (in-JS evaluator) and
  * `buildFilterExpression` (DynamoDB pushdown). Keeping the set in one place
@@ -48,7 +50,7 @@ export const SUPPORTED_OPERATORS_DESCRIPTION = `${[...SUPPORTED_OPERATORS].join(
 
 export function unsupportedOperatorError(operator: string, field: string): Error {
   return new Error(
-    `payload-ddb: operator \`${operator}\` is not supported yet on field \`${field}\`. ` +
+    `${PACKAGE_NAME}: operator \`${operator}\` is not supported yet on field \`${field}\`. ` +
       `Supported: ${SUPPORTED_OPERATORS_DESCRIPTION}.`,
   )
 }

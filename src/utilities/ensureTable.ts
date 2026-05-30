@@ -4,6 +4,7 @@ import {
   waitUntilTableExists,
 } from '@aws-sdk/client-dynamodb'
 
+import { PACKAGE_NAME, adapterError } from '../packageMeta.js'
 import type { DynamoAdapter } from '../types.js'
 
 import { buildCreateTableInput } from '../schema/tableDefinition.js'
@@ -11,7 +12,7 @@ import { buildCreateTableInput } from '../schema/tableDefinition.js'
 export async function ensureTable(adapter: DynamoAdapter, tableName: string): Promise<void> {
   const client = adapter.client
   if (!client) {
-    throw new Error('@payloadcms/db-dynamodb: client is not initialized — call connect() first.')
+    throw adapterError('client is not initialized — call connect() first.')
   }
 
   try {
@@ -23,7 +24,7 @@ export async function ensureTable(adapter: DynamoAdapter, tableName: string): Pr
     }
   }
 
-  adapter.payload.logger.info(`@payloadcms/db-dynamodb: creating table \`${tableName}\``)
+  adapter.payload.logger.info(`${PACKAGE_NAME}: creating table \`${tableName}\``)
 
   await client.send(new CreateTableCommand(buildCreateTableInput(tableName)))
 

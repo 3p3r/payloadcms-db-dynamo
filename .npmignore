@@ -1,0 +1,32 @@
+# Source & tests (consumers use dist/ only)
+src/
+test/
+scripts/
+
+# Tooling & CI
+.github/
+.vscode/
+.cursor/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Docker & local dev
+docker-compose.yml
+.dockerignore
+.dynamodb/
+
+# Generated in dev (not shipped)
+src/payload-generated-dynamodb.json
+
+# Environment
+.env
+.env.*
+
+# Docs for contributors (README ships via package.json "files")
+AGENTS.md
+
+# Git
+.git/
+.gitignore
+.gitattributes

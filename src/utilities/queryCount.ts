@@ -1,4 +1,5 @@
 import type { Where } from 'payload'
+import { adapterError, DOC_CLIENT_REQUIRED } from '../packageMeta.js'
 
 import { QueryCommand } from '@aws-sdk/lib-dynamodb'
 
@@ -20,7 +21,7 @@ export async function queryCount(
 ): Promise<number> {
   const docClient = adapter.docClient
   if (!docClient) {
-    throw new Error('payload-ddb: docClient is not initialized — call connect() first.')
+    throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   // JS-only operators (e.g. `like`) can't be expressed in `FilterExpression`,
