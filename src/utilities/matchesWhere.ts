@@ -1,6 +1,6 @@
 import type { Where } from 'payload'
 
-import { getByPath } from './getByPath.js'
+import { getPath } from './getPath.js'
 import { matchOperator } from './matchOperator.js'
 import { SUPPORTED_OPERATORS, unsupportedOperatorError } from './operators.js'
 
@@ -27,7 +27,7 @@ export function matchesWhere(item: Record<string, unknown>, where: Where | undef
 
     if (!raw || typeof raw !== 'object') continue
 
-    const fieldValue = getByPath(item, key)
+    const fieldValue = getPath(item, key)
     for (const [operator, expected] of Object.entries(raw as Record<string, unknown>)) {
       if (!SUPPORTED_OPERATORS.has(operator)) {
         throw unsupportedOperatorError(operator, key)

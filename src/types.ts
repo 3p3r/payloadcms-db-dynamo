@@ -1,5 +1,7 @@
 import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb'
 import type { DynamoDBDocumentClient, TranslateConfig } from '@aws-sdk/lib-dynamodb'
+
+import type { AdapterRcConfig } from './config.js'
 import type {
   ArrayField,
   BaseDatabaseAdapter,
@@ -106,6 +108,8 @@ export interface DynamoAdapter extends Omit<BaseDatabaseAdapter, 'sessions'> {
   translateConfig: TranslateConfig
   /** True when the adapter constructed `client` itself and owns its lifecycle. */
   ownsClient: boolean
+  /** Resolved operational tunables (rc defaults + factory args). */
+  config: AdapterRcConfig
   /** The single table name that backs all collections, globals, and versions. */
   tableName: string
   ensureTables: boolean

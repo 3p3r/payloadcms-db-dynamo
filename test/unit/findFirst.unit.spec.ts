@@ -1,13 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { DynamoAdapter } from '../../src/types.js'
 import { findFirst } from '../../src/utilities/findFirst.js'
+import { mockAdapter } from '../__helpers/mockAdapter.js'
 
-function adapterWithSend(send: ReturnType<typeof vi.fn>): DynamoAdapter {
-  return {
-    tableName: 't',
-    docClient: { send },
-  } as unknown as DynamoAdapter
+function adapterWithSend(send: ReturnType<typeof vi.fn>) {
+  return mockAdapter({ send, tableName: 't' })
 }
 
 describe('findFirst', () => {

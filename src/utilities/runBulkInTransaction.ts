@@ -15,6 +15,9 @@ export async function runBulkInTransaction<T>(
   }
 
   const transactionID = await beginTransaction.call(adapter)
+  if (transactionID === null) {
+    return fn(req ?? {})
+  }
   const bulkReq: PartialPayloadRequest = { ...(req ?? {}), transactionID }
 
   try {

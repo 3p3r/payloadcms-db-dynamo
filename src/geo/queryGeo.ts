@@ -6,15 +6,18 @@ import { S2Manager } from 'dynamodb-geo-v3/dist/s2/S2Manager.js'
 import {
   coveringForRadius,
   coveringForRectangle,
-  DEFAULT_GEO_HASH_KEY_LENGTH,
   geoPartitionForCell,
   toGeoPoint,
 } from './geohash.js'
 import { parseNearOperator, parsePoint } from './distance.js'
+import { isGeoShapeClause } from './types.js'
+import { log } from '../log.js'
 import { GEO_INDEX_NAME } from '../schema/keys.js'
 import type { DynamoAdapter, PartialPayloadRequest } from '../types.js'
 import { dynamoSend } from '../utilities/dynamoSend.js'
 import { extractPolygonRing } from '../utilities/matchOperator.js'
+
+const geoLog = log('geo')
 
 async function queryGeohashRange(
   adapter: DynamoAdapter,
@@ -35,10 +38,7 @@ async function queryGeohashRange(
   }
 
   while (true) {
-    const result = await dynamoSend<{
-      Items?: Record<string, unknown>[]
-      LastEvaluatedKey?: Record<string, unknown>
-    }>(
+    const result = await dynamoSend(
       adapter,
       req,
       new QueryCommand({
@@ -74,21 +74,20 @@ export async function queryGeoDocIds(
   req?: PartialPayloadRequest,
 ): Promise<Set<string> | null> {
   const slug = String(collection)
+  const { geoHashKeyLength, geoNearDefaultMaxDistanceMeters } = adapter.config
 
   if (operator === 'near') {
     const near = parseNearOperator(clause)
     if (!near) return new Set()
     const center = toGeoPoint(near.center.longitude, near.center.latitude)
-    const radius = near.maxDistance ?? 1000
-    const ranges = coveringForRadius(center, radius)
+    const radius = near.maxDistance ?? geoNearDefaultMaxDistanceMeters
+    geoLog('near query radius=%d', radius)
+    const ranges = coveringForRadius(center, radius, geoHashKeyLength)
     const docIds = new Set<string>()
     for (const range of ranges) {
-      const splits = range.trySplit(DEFAULT_GEO_HASH_KEY_LENGTH)
+      const splits = range.trySplit(geoHashKeyLength)
       for (const split of splits) {
-        const hashPrefix = S2Manager.generateHashKey(
-          split.rangeMin,
-          DEFAULT_GEO_HASH_KEY_LENGTH,
-        ).toString(10)
+        const hashPrefix = S2Manager.generateHashKey(split.rangeMin, geoHashKeyLength).toString(10)
         const pk = geoPartitionForCell(slug, fieldPath, hashPrefix)
         const ids = await queryGeohashRange(
           adapter,
@@ -104,13 +103,15 @@ export async function queryGeoDocIds(
   }
 
   if (operator === 'within' || operator === 'intersects') {
-    const raw = clause as { coordinates?: unknown; $geometry?: { coordinates?: unknown } }
-    const ring = extractPolygonRing(raw.$geometry?.coordinates ?? raw.coordinates)
+    if (!isGeoShapeClause(clause)) return new Set()
+    const ring = extractPolygonRing(clause.$geometry?.coordinates ?? clause.coordinates)
     if (!ring || ring.length < 4) return new Set()
-    let minLng = ring[0]!.longitude
-    let maxLng = ring[0]!.longitude
-    let minLat = ring[0]!.latitude
-    let maxLat = ring[0]!.latitude
+    const first = ring[0]
+    if (!first) return new Set()
+    let minLng = first.longitude
+    let maxLng = first.longitude
+    let minLat = first.latitude
+    let maxLat = first.latitude
     for (const { longitude: lng, latitude: lat } of ring) {
       minLng = Math.min(minLng, lng)
       maxLng = Math.max(maxLng, lng)
@@ -120,15 +121,13 @@ export async function queryGeoDocIds(
     const ranges = coveringForRectangle(
       toGeoPoint(minLng, minLat),
       toGeoPoint(maxLng, maxLat),
+      geoHashKeyLength,
     )
     const docIds = new Set<string>()
     for (const range of ranges) {
-      const splits = range.trySplit(DEFAULT_GEO_HASH_KEY_LENGTH)
+      const splits = range.trySplit(geoHashKeyLength)
       for (const split of splits) {
-        const hashPrefix = S2Manager.generateHashKey(
-          split.rangeMin,
-          DEFAULT_GEO_HASH_KEY_LENGTH,
-        ).toString(10)
+        const hashPrefix = S2Manager.generateHashKey(split.rangeMin, geoHashKeyLength).toString(10)
         const pk = geoPartitionForCell(slug, fieldPath, hashPrefix)
         const ids = await queryGeohashRange(
           adapter,

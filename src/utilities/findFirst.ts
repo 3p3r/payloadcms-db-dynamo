@@ -39,7 +39,7 @@ export async function findFirst(
   const id = whereToId(args.where)
 
   if (id !== null) {
-    const result = await dynamoSend<{ Item?: Record<string, unknown> }>(
+    const result = await dynamoSend(
       adapter,
       args.req,
       new GetCommand({
@@ -68,10 +68,7 @@ export async function findFirst(
   let exclusiveStartKey: Record<string, unknown> | undefined
 
   while (true) {
-    const result = await dynamoSend<{
-      Items?: Record<string, unknown>[]
-      LastEvaluatedKey?: Record<string, unknown>
-    }>(
+    const result = await dynamoSend(
       adapter,
       args.req,
       new QueryCommand({

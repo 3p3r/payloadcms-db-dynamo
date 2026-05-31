@@ -26,7 +26,7 @@ export const deleteOne: DeleteOne = async function deleteOne(
   let found: Record<string, unknown> | null = null
 
   if (idFromWhere !== null) {
-    const result = await dynamoSend<{ Item?: Record<string, unknown> }>(
+    const result = await dynamoSend(
       this,
       req,
       new GetCommand({

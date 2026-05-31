@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { MATCH_OPERATORS, matchOperator } from '../../src/utilities/matchOperator.js'
+import {
+  extractPolygonRing,
+  MATCH_OPERATORS,
+  matchOperator,
+} from '../../src/utilities/matchOperator.js'
 
 describe('matchOperator', () => {
   const ring = [
@@ -69,6 +73,14 @@ describe('matchOperator', () => {
         ],
       }),
     ).toBe(true)
+  })
+
+  it('extractPolygonRing accepts GeoJSON rings and flat coordinate lists', () => {
+    const fromMulti = extractPolygonRing(ring)
+    expect(fromMulti?.length).toBeGreaterThanOrEqual(3)
+    expect(extractPolygonRing([[-122.5, 37.7], [-122.3, 37.7], [-122.3, 37.9]])).not.toBeNull()
+    expect(extractPolygonRing(null)).toBeNull()
+    expect(extractPolygonRing([['a', 'b']])).toBeNull()
   })
 
   it('exports a handler per supported operator name', () => {

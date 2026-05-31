@@ -233,7 +233,7 @@ export function compileQuery(
   }
 
   const searchPaths = config ? collectSearchIndexPaths(config) : []
-  const searchLike = extractSearchLikeWhere(where, searchPaths)
+  const searchLike = extractSearchLikeWhere(where, searchPaths, adapter.config.searchNgramLength)
   if (searchLike && canPushFilter(searchLike.remainder)) {
     return {
       kind: 'search-ngram',

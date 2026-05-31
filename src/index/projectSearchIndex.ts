@@ -7,7 +7,7 @@ import {
   searchNgrams,
 } from '../schema/searchIndex.js'
 import type { DynamoAdapter } from '../types.js'
-import { getNestedValue } from '../utilities/getNestedValue.js'
+import { getPath } from '../utilities/getPath.js'
 import { itemKey } from '../transactions/types.js'
 import type { IndexKey, IndexProjection } from './projector.js'
 
@@ -18,11 +18,12 @@ function ngramRowsForDoc(
   docId: string,
   doc: Record<string, unknown>,
   paths: string[],
+  ngramLength: number,
 ): NgramRow[] {
   const rows: NgramRow[] = []
   for (const path of paths) {
-    const text = normalizeSearchText(getNestedValue(doc, path))
-    for (const gram of searchNgrams(text)) {
+    const text = normalizeSearchText(getPath(doc, path))
+    for (const gram of searchNgrams(text, ngramLength)) {
       rows.push({
         path,
         gram,
@@ -50,12 +51,13 @@ export function projectSearchIndex(
   if (paths.length === 0) return { puts: [], deletes: [] }
 
   const id = String(doc['id'])
-  const afterRows = ngramRowsForDoc(slug, id, doc, paths)
+  const ngramLength = adapter.config.searchNgramLength
+  const afterRows = ngramRowsForDoc(slug, id, doc, paths, ngramLength)
   const afterKeys = new Set(afterRows.map((row) => itemKey(row.key.pk, row.key.sk)))
   const deletes: IndexKey[] = []
 
   if (before) {
-    for (const row of ngramRowsForDoc(slug, id, before, paths)) {
+    for (const row of ngramRowsForDoc(slug, id, before, paths, ngramLength)) {
       const key = itemKey(row.key.pk, row.key.sk)
       if (!afterKeys.has(key)) {
         deletes.push(row.key)

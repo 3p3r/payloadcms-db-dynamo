@@ -1,6 +1,6 @@
 import type { Where } from 'payload'
 
-import { normalizeForDynamo } from './normalizeForDynamo.js'
+import { normalizeFilterValue } from './normalizeForDynamo.js'
 import {
   FILTER_NON_PUSHABLE_OPERATORS,
   SUPPORTED_OPERATORS,
@@ -47,8 +47,8 @@ export type FilterExpression = {
   values: Record<string, unknown>
 }
 
-const NEVER = Symbol('payload-ddb-filter-never')
-type Compiled = string | typeof NEVER
+const FILTER_NEVER = Symbol('filter-never')
+type Compiled = string | typeof FILTER_NEVER
 
 type Ctx = {
   nameByPlaceholder: Record<string, string>
@@ -72,7 +72,7 @@ export function buildFilterExpression(
   }
 
   const expression = compile(where, ctx)
-  if (expression === NEVER) return null
+  if (expression === FILTER_NEVER) return null
   if (!expression) return undefined
 
   return {
@@ -88,13 +88,13 @@ function compile(where: Where, ctx: Ctx): Compiled {
   for (const [key, raw] of Object.entries(where)) {
     if (key === 'and') {
       const inner = compileGroup(raw, ctx, 'AND')
-      if (inner === NEVER) return NEVER
+      if (inner === FILTER_NEVER) return FILTER_NEVER
       if (inner) parts.push(inner)
       continue
     }
     if (key === 'or') {
       const inner = compileGroup(raw, ctx, 'OR')
-      if (inner === NEVER) return NEVER
+      if (inner === FILTER_NEVER) return FILTER_NEVER
       if (inner) parts.push(inner)
       continue
     }
@@ -109,7 +109,7 @@ function compile(where: Where, ctx: Ctx): Compiled {
         throw unsupportedOperatorError(operator, key)
       }
       const expr = operatorToExpression(operator, path, expected, ctx)
-      if (expr === NEVER) return NEVER
+      if (expr === FILTER_NEVER) return FILTER_NEVER
       if (expr) parts.push(expr)
     }
   }
@@ -128,8 +128,8 @@ function compileGroup(raw: unknown, ctx: Ctx, joiner: 'AND' | 'OR'): Compiled {
     if (!sub || typeof sub !== 'object') continue
     consideredCount++
     const expr = compile(sub as Where, ctx)
-    if (expr === NEVER) {
-      if (joiner === 'AND') return NEVER
+    if (expr === FILTER_NEVER) {
+      if (joiner === 'AND') return FILTER_NEVER
       neverCount++
       continue
     }
@@ -137,7 +137,7 @@ function compileGroup(raw: unknown, ctx: Ctx, joiner: 'AND' | 'OR'): Compiled {
   }
   // OR over branches that all collapsed to NEVER is NEVER itself.
   if (joiner === 'OR' && consideredCount > 0 && neverCount === consideredCount) {
-    return NEVER
+    return FILTER_NEVER
   }
   if (subs.length === 0) return ''
   if (subs.length === 1) return subs[0]!
@@ -166,7 +166,7 @@ function valueRef(ctx: Ctx, value: unknown): string {
   // actually stored. Without this, `{ updatedAt: { greater_than: new Date() } }`
   // would push an empty map literal into the filter and DynamoDB would reject
   // the comparison.
-  ctx.values[placeholder] = normalizeForDynamo(value)
+  ctx.values[placeholder] = normalizeFilterValue(value)
   return placeholder
 }
 
@@ -181,7 +181,7 @@ const DYNAMO_COMPARE_OPS: Record<
   greater_than_equal: (path, expected, ctx) => `${path} >= ${valueRef(ctx, expected)}`,
   in: (path, expected, ctx) => {
     if (!Array.isArray(expected)) return ''
-    if (expected.length === 0) return NEVER
+    if (expected.length === 0) return FILTER_NEVER
     const refs = expected.map((v) => valueRef(ctx, v))
     return `${path} IN (${refs.join(', ')})`
   },

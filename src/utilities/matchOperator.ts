@@ -4,6 +4,7 @@ import {
   parsePoint,
   type PointCoordinates,
 } from '../geo/distance.js'
+import { isGeoJsonPosition, isGeoShapeClause } from '../geo/types.js'
 
 import { compareValuesLoose } from './compareValues.js'
 
@@ -24,23 +25,25 @@ function matchContains(actual: unknown, expected: unknown): boolean {
 
 function matchGeoShape(actual: unknown, expected: unknown): boolean {
   const point = parsePoint(actual)
-  if (!point || !expected || typeof expected !== 'object') return false
-  const raw = expected as { $geometry?: { coordinates?: unknown }; coordinates?: unknown }
-  const ring = extractPolygonRing(raw.$geometry?.coordinates ?? raw.coordinates)
+  if (!point || !isGeoShapeClause(expected)) return false
+  const ring = extractPolygonRing(expected.$geometry?.coordinates ?? expected.coordinates)
   return ring ? pointInPolygon(point, ring) : false
 }
 
 export function extractPolygonRing(coordinates: unknown): PointCoordinates[] | null {
   if (!Array.isArray(coordinates)) return null
-  const ring = (coordinates[0] ?? coordinates) as unknown[]
-  if (!Array.isArray(ring)) return null
+  const first = coordinates[0]
+  const ringCandidate =
+    Array.isArray(first) && isGeoJsonPosition(first)
+      ? coordinates
+      : Array.isArray(first)
+        ? first
+        : null
+  if (!Array.isArray(ringCandidate)) return null
   const points: PointCoordinates[] = []
-  for (const coord of ring) {
-    if (!Array.isArray(coord) || coord.length < 2) continue
-    const [lng, lat] = coord
-    if (typeof lng === 'number' && typeof lat === 'number') {
-      points.push({ longitude: lng, latitude: lat })
-    }
+  for (const coord of ringCandidate) {
+    if (!isGeoJsonPosition(coord)) continue
+    points.push({ longitude: coord[0], latitude: coord[1] })
   }
   return points.length >= 3 ? points : null
 }
@@ -48,10 +51,13 @@ export function extractPolygonRing(coordinates: unknown): PointCoordinates[] | n
 function pointInPolygon(point: PointCoordinates, ring: PointCoordinates[]): boolean {
   let inside = false
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i]!.longitude
-    const yi = ring[i]!.latitude
-    const xj = ring[j]!.longitude
-    const yj = ring[j]!.latitude
+    const vertexI = ring[i]
+    const vertexJ = ring[j]
+    if (!vertexI || !vertexJ) continue
+    const xi = vertexI.longitude
+    const yi = vertexI.latitude
+    const xj = vertexJ.longitude
+    const yj = vertexJ.latitude
     const intersect =
       yi > point.latitude !== yj > point.latitude &&
       point.longitude < ((xj - xi) * (point.latitude - yi)) / (yj - yi + 0) + xi

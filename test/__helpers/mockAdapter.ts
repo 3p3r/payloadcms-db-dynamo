@@ -1,21 +1,49 @@
 import { vi } from 'vitest'
 
+import { resolveAdapterConfig } from '../../src/config.js'
+import type { AdapterRcConfig } from '../../src/config.js'
+import { PACKAGE_NAME } from '../../src/packageMeta.js'
 import type { DynamoAdapter } from '../../src/types.js'
+
+const defaultConfig = resolveAdapterConfig()
+
+function baseAdapterFields(
+  config: AdapterRcConfig = defaultConfig,
+): Pick<
+  DynamoAdapter,
+  'config' | 'tableName' | 'ensureTables' | 'bulkOperationsSingleTransaction' | 'resolvePartition' | 'resolveVersionsPartition'
+> {
+  return {
+    config,
+    tableName: config.tableName,
+    ensureTables: config.ensureTables,
+    bulkOperationsSingleTransaction: config.bulkOperationsSingleTransaction,
+    resolvePartition: (s: string) => s,
+    resolveVersionsPartition: (s: string) => `${s}_versions`,
+  }
+}
 
 /** Adapter skeleton without `docClient` / `client` — for guard-rail tests. */
 export function bareAdapter(overrides: Partial<DynamoAdapter> = {}): DynamoAdapter {
-  return {
+  const config = overrides.config ?? defaultConfig
+  const base = {
+    name: 'dynamodb',
+    packageName: PACKAGE_NAME,
     client: undefined,
     docClient: undefined,
-    tableName: 't',
+    clientConfig: {},
+    translateConfig: {},
+    ownsClient: false,
+    transactionSessions: {},
+    sessions: {},
     payload: {
       config: { collections: [], globals: [] },
-      logger: { info: () => {}, warn: () => {}, error: () => {} },
+      logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
     },
-    resolvePartition: (s: string) => s,
-    resolveVersionsPartition: (s: string) => `${s}_versions`,
+    ...baseAdapterFields(config),
     ...overrides,
-  } as DynamoAdapter
+  }
+  return base as DynamoAdapter
 }
 
 /** Adapter with a mock `docClient.send` and empty transaction map. */
@@ -33,7 +61,7 @@ export function mockAdapter(
     payload: {
       collections: {},
       config: { globals: [] },
-      logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+      logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
     },
     ...rest,
   })
@@ -47,7 +75,7 @@ export function writeTestPayload(): DynamoAdapter['payload'] {
       header: { config: { fields: [{ name: 'logoText', type: 'text' }] } },
     },
     config: { globals: [{ slug: 'header', fields: [{ name: 'logoText', type: 'text' }] }] },
-  } as never
+  } as DynamoAdapter['payload']
 }
 
 export function writeAdapter(send = vi.fn().mockResolvedValue({})): DynamoAdapter {

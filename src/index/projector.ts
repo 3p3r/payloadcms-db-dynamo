@@ -17,7 +17,7 @@ import {
 } from '../schema/keys.js'
 import type { DynamoAdapter } from '../types.js'
 import { getCollectionFields } from '../utilities/resolveSchema.js'
-import { getNestedValue } from '../utilities/getNestedValue.js'
+import { getPath } from '../utilities/getPath.js'
 import { projectSearchIndex } from './projectSearchIndex.js'
 
 export type IndexKey = { pk: string; sk: string }
@@ -30,7 +30,7 @@ export type IndexProjection = {
 }
 
 function listSortValue(doc: Record<string, unknown>, sortField: string): string {
-  const raw = getNestedValue(doc, sortField)
+  const raw = getPath(doc, sortField)
   if (raw === undefined || raw === null) return ''
   return normalizeIndexValue(raw)
 }
@@ -54,12 +54,13 @@ export function projectCollectionIndexes(
   const deletes: IndexKey[] = []
 
   const sortField = indexPaths[0] ?? 'createdAt'
+  const geoHashKeyLength = adapter.config.geoHashKeyLength
   mainAttributes.gsi1pk = listSpineGsi1pk(slug)
   mainAttributes.gsi1sk = listSpineGsi1sk(listSortValue(doc, sortField), id)
 
   for (const path of indexPaths) {
-    const value = getNestedValue(doc, path)
-    const prev = before ? getNestedValue(before, path) : undefined
+    const value = getPath(doc, path)
+    const prev = before ? getPath(before, path) : undefined
     if (before && normalizeIndexValue(prev) === normalizeIndexValue(value)) continue
     if (before && prev !== undefined) {
       deletes.push({
@@ -81,23 +82,29 @@ export function projectCollectionIndexes(
   }
 
   for (const path of pointPaths) {
-    const point = parsePoint(getNestedValue(doc, path))
-    const prevPoint = before ? parsePoint(getNestedValue(before, path)) : null
+    const point = parsePoint(getPath(doc, path))
+    const prevPoint = before ? parsePoint(getPath(before, path)) : null
     if (before && prevPoint) {
-      const prevHash = geohashForPoint({
-        longitude: prevPoint.longitude,
-        latitude: prevPoint.latitude,
-      })
+      const prevHash = geohashForPoint(
+        {
+          longitude: prevPoint.longitude,
+          latitude: prevPoint.latitude,
+        },
+        geoHashKeyLength,
+      )
       deletes.push({
         pk: geoPk(slug, path, prevHash.hashPrefix),
         sk: geoSk(id),
       })
     }
     if (point) {
-      const { geohash, hashPrefix } = geohashForPoint({
-        longitude: point.longitude,
-        latitude: point.latitude,
-      })
+      const { geohash, hashPrefix } = geohashForPoint(
+        {
+          longitude: point.longitude,
+          latitude: point.latitude,
+        },
+        geoHashKeyLength,
+      )
       puts.push({
         pk: geoPk(slug, path, hashPrefix),
         sk: geoSk(id),

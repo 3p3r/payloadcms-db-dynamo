@@ -15,6 +15,7 @@ function parseSearchLeaf(
   field: string,
   clause: unknown,
   searchable: Set<string>,
+  ngramLength: number,
 ): { field: string; operator: SearchLikePlan['operator']; searchText: string } | null {
   if (!searchable.has(field)) return null
   if (!clause || typeof clause !== 'object' || Array.isArray(clause)) return null
@@ -22,7 +23,7 @@ function parseSearchLeaf(
   for (const op of SEARCH_OPS) {
     if (op in clause) {
       const searchText = (clause as Record<string, unknown>)[op]
-      if (typeof searchText !== 'string' || searchNgrams(searchText).length === 0) {
+      if (typeof searchText !== 'string' || searchNgrams(searchText, ngramLength).length === 0) {
         return null
       }
       return { field, operator: op, searchText }
@@ -34,6 +35,7 @@ function parseSearchLeaf(
 function parseOrGroup(
   clauses: unknown[],
   searchable: Set<string>,
+  ngramLength: number,
 ): Omit<SearchLikePlan, 'remainder'> | null {
   let operator: SearchLikePlan['operator'] | null = null
   let searchText: string | null = null
@@ -44,7 +46,7 @@ function parseOrGroup(
     const entries = Object.entries(sub).filter(([k]) => k !== 'and' && k !== 'or')
     if (entries.length !== 1) return null
     const [field, raw] = entries[0]!
-    const parsed = parseSearchLeaf(field, raw, searchable)
+    const parsed = parseSearchLeaf(field, raw, searchable, ngramLength)
     if (!parsed) return null
     if (operator && operator !== parsed.operator) return null
     if (searchText && searchText !== parsed.searchText) return null
@@ -60,12 +62,13 @@ function parseOrGroup(
 export function extractSearchLikeWhere(
   where: Where | undefined,
   searchablePaths: string[],
+  ngramLength: number,
 ): SearchLikePlan | null {
   if (!where || searchablePaths.length === 0) return null
   const searchable = new Set(searchablePaths)
 
   if ('or' in where && Array.isArray(where.or)) {
-    const parsed = parseOrGroup(where.or, searchable)
+    const parsed = parseOrGroup(where.or, searchable, ngramLength)
     if (!parsed) return null
     const remainder = { ...where }
     delete remainder.or
@@ -76,7 +79,7 @@ export function extractSearchLikeWhere(
   const entries = Object.entries(where).filter(([k]) => k !== 'and' && k !== 'or')
   if (entries.length !== 1) return null
   const [field, raw] = entries[0]!
-  const parsed = parseSearchLeaf(field, raw, searchable)
+  const parsed = parseSearchLeaf(field, raw, searchable, ngramLength)
   if (!parsed) return null
   return {
     operator: parsed.operator,

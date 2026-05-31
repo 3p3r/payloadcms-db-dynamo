@@ -7,21 +7,23 @@ import type { GeoPoint } from 'dynamodb-geo-v3/dist/types.js'
 
 import { geoPk } from '../schema/keys.js'
 
-export const DEFAULT_GEO_HASH_KEY_LENGTH = 5
-
 export function toGeoPoint(longitude: number, latitude: number): GeoPoint {
   return { longitude, latitude }
 }
 
-export function geohashForPoint(point: GeoPoint): { geohash: string; hashPrefix: string } {
+export function geohashForPoint(
+  point: GeoPoint,
+  geoHashKeyLength: number,
+): { geohash: string; hashPrefix: string } {
   const geohash = S2Manager.generateGeohash(point)
-  const hashPrefix = S2Manager.generateHashKey(geohash, DEFAULT_GEO_HASH_KEY_LENGTH).toString(10)
+  const hashPrefix = S2Manager.generateHashKey(geohash, geoHashKeyLength).toString(10)
   return { geohash: geohash.toString(10), hashPrefix }
 }
 
 export function coveringForRadius(
   center: GeoPoint,
   radiusMeters: number,
+  geoHashKeyLength: number,
 ): GeohashRange[] {
   const rect = S2Util.getBoundingLatLngRectFromQueryRadiusInput({
     CenterPoint: center,
@@ -29,17 +31,21 @@ export function coveringForRadius(
   })
   const coverer = new S2RegionCoverer()
   const covering = new Covering(coverer.getCoveringCells(rect))
-  return covering.getGeoHashRanges(DEFAULT_GEO_HASH_KEY_LENGTH)
+  return covering.getGeoHashRanges(geoHashKeyLength)
 }
 
-export function coveringForRectangle(min: GeoPoint, max: GeoPoint): GeohashRange[] {
+export function coveringForRectangle(
+  min: GeoPoint,
+  max: GeoPoint,
+  geoHashKeyLength: number,
+): GeohashRange[] {
   const rect = S2Util.latLngRectFromQueryRectangleInput({
     MinPoint: min,
     MaxPoint: max,
   })
   const coverer = new S2RegionCoverer()
   const covering = new Covering(coverer.getCoveringCells(rect))
-  return covering.getGeoHashRanges(DEFAULT_GEO_HASH_KEY_LENGTH)
+  return covering.getGeoHashRanges(geoHashKeyLength)
 }
 
 export function geoPartitionForCell(

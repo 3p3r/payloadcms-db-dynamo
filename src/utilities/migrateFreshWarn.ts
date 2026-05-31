@@ -1,4 +1,9 @@
+import type { DynamoAdapter } from '../types.js'
+
 /** Whether migrateFresh should log its destructive-action warning. */
-export function shouldWarnMigrateFresh(forceAcceptWarning: boolean): boolean {
-  return !forceAcceptWarning && process.env.NODE_ENV !== 'test'
+export function shouldWarnMigrateFresh(
+  adapter: DynamoAdapter,
+  forceAcceptWarning: boolean,
+): boolean {
+  return !forceAcceptWarning && adapter.config.warnOnMigrateFresh
 }

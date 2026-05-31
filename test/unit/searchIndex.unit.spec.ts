@@ -4,9 +4,9 @@ import { projectSearchIndex } from '../../src/index/projectSearchIndex.js'
 import {
   normalizeSearchText,
   searchNgrams,
-  SEARCH_NGRAM_LENGTH,
   collectSearchIndexPaths,
 } from '../../src/schema/searchIndex.js'
+import { resolveAdapterConfig } from '../../src/config.js'
 import { mockAdapter } from '../__helpers/mockAdapter.js'
 
 describe('searchIndex', () => {
@@ -14,11 +14,12 @@ describe('searchIndex', () => {
     expect(normalizeSearchText('  Hello   World  ')).toBe('hello world')
   })
 
-  it('searchNgrams emits overlapping grams of length SEARCH_NGRAM_LENGTH', () => {
-    expect(SEARCH_NGRAM_LENGTH).toBe(3)
-    expect(searchNgrams('robot')).toEqual(['rob', 'obo', 'bot'])
-    expect(searchNgrams('ab')).toEqual([])
-    expect(searchNgrams('')).toEqual([])
+  it('searchNgrams emits overlapping grams of configured length', () => {
+    const n = resolveAdapterConfig().searchNgramLength
+    expect(n).toBe(3)
+    expect(searchNgrams('robot', n)).toEqual(['rob', 'obo', 'bot'])
+    expect(searchNgrams('ab', n)).toEqual([])
+    expect(searchNgrams('', n)).toEqual([])
   })
 
   it('collectSearchIndexPaths merges listSearchableFields and useAsTitle', () => {

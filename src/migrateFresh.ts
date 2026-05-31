@@ -11,8 +11,11 @@ import {
 import { adapterError } from './packageMeta.js'
 import type { DynamoAdapter } from './types.js'
 
+import { log } from './log.js'
 import { ensureTable } from './utilities/ensureTable.js'
 import { shouldWarnMigrateFresh } from './utilities/migrateFreshWarn.js'
+
+const migrateLog = log('migrateFresh')
 
 export const migrateFresh: BaseDatabaseAdapter['migrateFresh'] = async function migrateFresh(
   this: DynamoAdapter,
@@ -20,7 +23,7 @@ export const migrateFresh: BaseDatabaseAdapter['migrateFresh'] = async function 
 ) {
   const { payload } = this
 
-  if (shouldWarnMigrateFresh(forceAcceptWarning)) {
+  if (shouldWarnMigrateFresh(this, forceAcceptWarning)) {
     payload.logger.warn(
       'migrateFresh will delete the DynamoDB table and re-run all migrations. Pass forceAcceptWarning: true in tests.',
     )
@@ -33,13 +36,17 @@ export const migrateFresh: BaseDatabaseAdapter['migrateFresh'] = async function 
 
   try {
     await client.send(new DeleteTableCommand({ TableName: this.tableName }))
-    await waitUntilTableNotExists({ client, maxWaitTime: 60 }, { TableName: this.tableName })
+    await waitUntilTableNotExists(
+      { client, maxWaitTime: this.config.tableWaitMaxSeconds },
+      { TableName: this.tableName },
+    )
   } catch (err) {
     if (!(err instanceof Error) || err.name !== 'ResourceNotFoundException') {
       throw err
     }
   }
 
+  migrateLog('table dropped, running migrations')
   if (this.ensureTables) {
     await ensureTable(this, this.tableName)
   }

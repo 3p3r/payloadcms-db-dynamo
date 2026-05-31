@@ -12,6 +12,16 @@ describe('buildFilterExpression', () => {
   it('returns null for always-false predicates', () => {
     expect(buildFilterExpression({ id: { in: [] } })).toBeNull()
     expect(buildFilterExpression({ or: [{ id: { in: [] } }] })).toBeNull()
+    expect(
+      buildFilterExpression({ and: [{ id: { in: [] } }, { title: { equals: 'x' } }] }),
+    ).toBeNull()
+  })
+
+  it('drops never branches from or groups', () => {
+    const f = buildFilterExpression({
+      or: [{ id: { in: [] } }, { title: { equals: 'ok' } }],
+    })
+    expect(f?.expression).toMatch(/#n\d+ = :v\d+/)
   })
 
   it('compiles comparisons and nested paths', () => {

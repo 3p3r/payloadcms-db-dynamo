@@ -1,10 +1,12 @@
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb'
 import type { CommitTransaction } from 'payload'
+import chunk from 'lodash/chunk.js'
 
+import { log } from '../log.js'
 import { adapterError } from '../packageMeta.js'
 import type { DynamoAdapter } from '../types.js'
 
-const MAX_TRANSACT_ITEMS = 100
+const txLog = log('transaction')
 
 export const commitTransaction: CommitTransaction = async function commitTransaction(
   this: DynamoAdapter,
@@ -24,8 +26,10 @@ export const commitTransaction: CommitTransaction = async function commitTransac
   const items = session.transactItems
   if (items.length === 0) return
 
-  for (let i = 0; i < items.length; i += MAX_TRANSACT_ITEMS) {
-    const chunk = items.slice(i, i + MAX_TRANSACT_ITEMS)
-    await docClient.send(new TransactWriteCommand({ TransactItems: chunk }))
+  const chunks = chunk(items, this.config.transactChunkSize)
+  txLog('committing %d transact items in %d chunk(s)', items.length, chunks.length)
+
+  for (const transactChunk of chunks) {
+    await docClient.send(new TransactWriteCommand({ TransactItems: transactChunk }))
   }
 }

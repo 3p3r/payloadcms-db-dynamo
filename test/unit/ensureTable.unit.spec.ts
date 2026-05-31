@@ -1,8 +1,8 @@
 import { DescribeTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { DynamoAdapter } from '../../src/types.js'
 import { ensureTable } from '../../src/utilities/ensureTable.js'
+import { mockAdapter } from '../__helpers/mockAdapter.js'
 import { TEST_DDB_ENDPOINT } from '../__helpers/assertDbReachable.js'
 import { randomTableName } from '../__helpers/randomTableName.js'
 
@@ -35,10 +35,10 @@ describe('ensureTable', () => {
       region: 'us-east-1',
       credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
     })
-    const adapter = {
+    const adapter = mockAdapter({
       client,
       payload: { logger: { info: () => {}, warn: () => {}, error: () => {} } },
-    } as DynamoAdapter
+    })
 
     await ensureTable(adapter, tableName)
     await ensureTable(adapter, tableName)
@@ -52,7 +52,7 @@ describe('ensureTable', () => {
 
   it('throws when client is missing', async () => {
     await expect(
-      ensureTable({ client: undefined, payload: { logger: console } } as DynamoAdapter, 'x'),
+      ensureTable(mockAdapter({ client: undefined, payload: { logger: console } }), 'x'),
     ).rejects.toThrow(/client/)
   })
 
@@ -61,7 +61,7 @@ describe('ensureTable', () => {
       send: vi.fn().mockRejectedValue(Object.assign(new Error('denied'), { name: 'AccessDeniedException' })),
     }
     await expect(
-      ensureTable({ client, payload: { logger: console } } as DynamoAdapter, 't'),
+      ensureTable(mockAdapter({ client, payload: { logger: console } }), 't'),
     ).rejects.toThrow('denied')
   })
 })

@@ -28,6 +28,12 @@ function scrubPayload(overrides: {
 }
 
 describe('scrubUnknownFields', () => {
+  it('rejects payloads that are not this adapter', async () => {
+    await expect(
+      scrubUnknownFields({ db: { packageName: 'other-db' } } as never),
+    ).rejects.toThrow(/payloadcms-db-dynamo adapter/)
+  })
+
   it('rewrites dirty collection rows and requires a connected adapter', async () => {
     const { db } = scrubPayload({
       globals: [{ slug: 'site', fields: [{ name: 'name', type: 'text' }], versions: true }],

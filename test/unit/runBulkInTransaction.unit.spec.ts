@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { deleteMany } from '../../src/deleteMany.js'
 import { updateMany } from '../../src/updateMany.js'
+import { beginTransaction } from '../../src/transactions/beginTransaction.js'
 import * as queryMatchingModule from '../../src/utilities/queryMatching.js'
 import { mockAdapter } from '../__helpers/mockAdapter.js'
 
@@ -23,6 +24,16 @@ describe('runBulkInTransaction', () => {
 
     expect(send.mock.calls.some(([cmd]) => cmd instanceof TransactWriteCommand)).toBe(true)
     vi.restoreAllMocks()
+  })
+
+  it('runs fn directly when beginTransaction returns null', async () => {
+    const adapter = mockAdapter({ bulkOperationsSingleTransaction: true })
+    const spy = vi.spyOn(beginTransaction, 'call').mockResolvedValue(null)
+    const fn = vi.fn().mockResolvedValue('ok')
+    const { runBulkInTransaction } = await import('../../src/utilities/runBulkInTransaction.js')
+    await expect(runBulkInTransaction(adapter, undefined, fn)).resolves.toBe('ok')
+    expect(fn).toHaveBeenCalled()
+    spy.mockRestore()
   })
 
   it('does not open a transaction when req already has transactionID', async () => {

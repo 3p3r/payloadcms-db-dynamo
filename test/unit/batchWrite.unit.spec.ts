@@ -32,6 +32,13 @@ describe('batchDeleteKeys', () => {
     await expect(batchDeleteKeys(adapter, [key])).rejects.toThrow(/unprocessed/i)
   })
 
+  it('rethrows non-unprocessed errors from send', async () => {
+    const key = { pk: 'p', sk: '1' }
+    const send = vi.fn().mockRejectedValue(new Error('network down'))
+    const adapter = mockAdapter({ send, tableName: 't' })
+    await expect(batchDeleteKeys(adapter, [key])).rejects.toThrow('network down')
+  })
+
   it('throws when docClient is missing', async () => {
     const adapter = mockAdapter({ docClient: undefined })
     await expect(batchDeleteKeys(adapter, [{ pk: 'p', sk: '1' }])).rejects.toThrow(/initialized/)

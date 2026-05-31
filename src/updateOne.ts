@@ -20,7 +20,7 @@ export const updateOne: UpdateOne = async function updateOne(this: DynamoAdapter
   let target: null | Record<string, unknown> = null
 
   if (args.id !== undefined && args.id !== null) {
-    const result = await dynamoSend<{ Item?: Record<string, unknown> }>(
+    const result = await dynamoSend(
       this,
       args.req,
       new GetCommand({
@@ -47,6 +47,6 @@ export const updateOne: UpdateOne = async function updateOne(this: DynamoAdapter
     target,
     data: args.data,
     ...(args.req ? { req: args.req } : {}),
-    returning: args.returning,
+    ...(args.returning !== undefined ? { returning: args.returning } : {}),
   })) as never
 }

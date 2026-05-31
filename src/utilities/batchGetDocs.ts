@@ -1,4 +1,5 @@
 import { BatchGetCommand } from '@aws-sdk/lib-dynamodb'
+import chunk from 'lodash/chunk.js'
 
 import { collectionPk, collectionSk } from '../schema/keys.js'
 import type { DynamoAdapter, PartialPayloadRequest } from '../types.js'
@@ -14,17 +15,13 @@ export async function batchGetCollectionDocs(
   if (ids.length === 0) return []
   const partition = adapter.resolvePartition(collection)
   const docs: Record<string, unknown>[] = []
-  const chunkSize = 100
 
-  for (let i = 0; i < ids.length; i += chunkSize) {
-    const chunk = ids.slice(i, i + chunkSize)
-    const keys = chunk.map((id) => ({
+  for (const idChunk of chunk(ids, adapter.config.batchGetChunkSize)) {
+    const keys = idChunk.map((id) => ({
       pk: collectionPk(partition),
       sk: collectionSk(id),
     }))
-    const result = await dynamoSend<{
-      Responses?: Record<string, Record<string, unknown>[]>
-    }>(
+    const result = await dynamoSend(
       adapter,
       req,
       new BatchGetCommand({

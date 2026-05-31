@@ -1,18 +1,21 @@
 import type { Payload, SanitizedGlobalConfig } from 'payload'
 
 import { PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
+import isEqual from 'lodash/isEqual.js'
 
-import { normalizeForDynamo } from './normalizeForDynamo.js'
-
-import { adapterError } from '../packageMeta.js'
+import { log } from '../log.js'
+import { PACKAGE_NAME, adapterError } from '../packageMeta.js'
 import type { DynamoAdapter } from '../types.js'
 
+import { normalizeForDynamo } from './normalizeForDynamo.js'
 import {
   pickConfiguredFields,
   pickConfiguredVersionRow,
 } from './pickConfiguredFields.js'
 import { ROW_RESERVED_KEYS } from './resolveSchema.js'
 import { stripInternalKeys } from './stripInternalKeys.js'
+
+const scrubLog = log('scrub')
 
 const PRESERVED_ADAPTER_KEYS = [
   'gsi1pk',
@@ -36,18 +39,24 @@ function preservedAdapterAttrs(item: Record<string, unknown>): Record<string, un
   return out
 }
 
+function requireDynamoAdapter(db: Payload['db']): DynamoAdapter {
+  if (
+    typeof db !== 'object' ||
+    db === null ||
+    !('packageName' in db) ||
+    db.packageName !== PACKAGE_NAME
+  ) {
+    throw adapterError('scrubUnknownFields requires payloadcms-db-dynamo adapter.')
+  }
+  // packageName is the stable discriminator; Payload's DatabaseAdapter type does not
+  // model our transaction session shape on `sessions`.
+  // @ts-expect-error Payload DatabaseAdapter.sessions differs from DynamoTransactionSession
+  return db
+}
+
 /**
  * One-shot cleanup pass for rows that were written before write-time
- * projection landed. Walks every collection, global, and versions partition
- * the adapter knows about, applies the same projection that today's writes
- * use, and re-`Put`s rows that changed. Rows whose contents are already
- * clean stay untouched.
- *
- * Intended to be called once after upgrading; not on every boot. The
- * adapter's regular write paths now project on every mutation, so once a
- * row has been written under the new code it stays clean. This helper
- * exists for the static legacy data that hasn't been touched since the bug
- * was active.
+ * projection landed.
  *
  * @example
  *   import { getPayload } from 'payload'
@@ -56,7 +65,7 @@ function preservedAdapterAttrs(item: Record<string, unknown>): Record<string, un
  *
  *   const payload = await getPayload({ config })
  *   const report = await scrubUnknownFields(payload)
- *   console.log(report)
+ *   payload.logger.info(JSON.stringify(report))
  *   await payload.destroy()
  */
 export interface ScrubReport {
@@ -67,10 +76,13 @@ export interface ScrubReport {
 }
 
 export async function scrubUnknownFields(payload: Payload): Promise<ScrubReport> {
-  const adapter = payload.db as unknown as DynamoAdapter
-  if (!adapter.docClient) {
+  const adapter = requireDynamoAdapter(payload.db)
+  const docClient = adapter.docClient
+  if (!docClient) {
     throw adapterError('scrubUnknownFields requires a connected adapter.')
   }
+
+  scrubLog('starting scrub across collections and globals')
 
   const report: ScrubReport = {
     collections: {},
@@ -123,12 +135,17 @@ async function scrubPartition(
   partition: string,
   project: (row: Record<string, unknown>) => Record<string, unknown>,
 ): Promise<{ scanned: number; modified: number }> {
+  const docClient = adapter.docClient
+  if (!docClient) {
+    throw adapterError('scrubUnknownFields requires a connected adapter.')
+  }
+
   let scanned = 0
   let modified = 0
   let exclusiveStartKey: Record<string, unknown> | undefined
 
   do {
-    const result = await adapter.docClient!.send(
+    const result = await docClient.send(
       new QueryCommand({
         TableName: adapter.tableName,
         KeyConditionExpression: 'pk = :pk',
@@ -146,8 +163,8 @@ async function scrubPartition(
       const projected = project(sansInternal)
       const preserved = preservedAdapterAttrs(item)
       const merged = { ...projected, ...preserved }
-      if (stableStringify(sansInternal) !== stableStringify(merged)) {
-        await adapter.docClient!.send(
+      if (!isEqual(sansInternal, merged)) {
+        await docClient.send(
           new PutCommand({
             TableName: adapter.tableName,
             Item: normalizeForDynamo({ ...merged, pk: item['pk'], sk: item['sk'] }),
@@ -161,21 +178,4 @@ async function scrubPartition(
   } while (exclusiveStartKey)
 
   return { scanned, modified }
-}
-
-/**
- * Sorted-key JSON serialization for stable deep equality. The projection
- * drops keys at any depth (nested groups, array items, blocks), so a
- * top-level key compare wouldn't detect leaks buried inside a `meta` or
- * `tags` field. Sort keys before stringifying so insertion-order
- * differences between the original row and the freshly-built projection
- * don't register as a false-positive diff.
- */
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
-  const keys = Object.keys(value as Record<string, unknown>).sort()
-  return `{${keys
-    .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`)
-    .join(',')}}`
 }

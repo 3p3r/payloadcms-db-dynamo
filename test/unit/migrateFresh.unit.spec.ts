@@ -12,19 +12,19 @@ vi.mock('payload', async (importOriginal) => {
   }
 })
 
+import { resolveAdapterConfig } from '../../src/config.js'
 import { migrateFresh } from '../../src/migrateFresh.js'
 import { shouldWarnMigrateFresh } from '../../src/utilities/migrateFreshWarn.js'
 import { bareAdapter } from '../__helpers/mockAdapter.js'
 
 describe('migrateFresh', () => {
-  it('shouldWarnMigrateFresh respects NODE_ENV and forceAcceptWarning', () => {
-    const prev = process.env.NODE_ENV
-    process.env.NODE_ENV = 'development'
-    expect(shouldWarnMigrateFresh(false)).toBe(true)
-    expect(shouldWarnMigrateFresh(true)).toBe(false)
-    process.env.NODE_ENV = 'test'
-    expect(shouldWarnMigrateFresh(false)).toBe(false)
-    process.env.NODE_ENV = prev
+  it('shouldWarnMigrateFresh respects config and forceAcceptWarning', () => {
+    const base = resolveAdapterConfig()
+    const warnAdapter = bareAdapter({ config: { ...base, warnOnMigrateFresh: true } })
+    const quietAdapter = bareAdapter({ config: { ...base, warnOnMigrateFresh: false } })
+    expect(shouldWarnMigrateFresh(warnAdapter, false)).toBe(true)
+    expect(shouldWarnMigrateFresh(warnAdapter, true)).toBe(false)
+    expect(shouldWarnMigrateFresh(quietAdapter, false)).toBe(false)
   })
 
   it('ignores missing table on delete and warns in development', async () => {
@@ -39,6 +39,7 @@ describe('migrateFresh', () => {
             Object.assign(new Error('missing'), { name: 'ResourceNotFoundException' }),
           ),
       },
+      config: { ...resolveAdapterConfig(), warnOnMigrateFresh: true },
       ensureTables: false,
       tableName: 'payload-test',
       payload: {

@@ -1,14 +1,12 @@
 import type { SanitizedCollectionConfig } from 'payload'
 
-export const SEARCH_NGRAM_LENGTH = 3
-
 export function normalizeSearchText(value: unknown): string {
   if (value === null || value === undefined) return ''
   const raw = typeof value === 'string' ? value : String(value)
   return raw.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
-export function searchNgrams(text: string, n = SEARCH_NGRAM_LENGTH): string[] {
+export function searchNgrams(text: string, n: number): string[] {
   const normalized = normalizeSearchText(text)
   if (normalized.length < n) return []
   const grams = new Set<string>()

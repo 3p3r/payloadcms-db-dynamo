@@ -2,6 +2,8 @@ import type { DatabaseAdapterObj, Payload } from 'payload'
 
 import { createDatabaseAdapter, findMigrationDir } from 'payload'
 
+import { resolveAdapterConfig, resolveTranslateConfig } from './config.js'
+import { DEBUG_ROOT } from './log.js'
 import { PACKAGE_NAME } from './packageMeta.js'
 import type { Args, DynamoAdapter } from './types.js'
 
@@ -39,12 +41,13 @@ import { updateVersion } from './updateVersion.js'
 import { upsert } from './upsert.js'
 
 export { PACKAGE_NAME } from './packageMeta.js'
+export { DEBUG_ROOT } from './log.js'
+export type { AdapterRcConfig } from './config.js'
 export type { Args, DynamoAdapter } from './types.js'
 export { scrubUnknownFields } from './utilities/scrubUnknownFields.js'
 export type { ScrubReport } from './utilities/scrubUnknownFields.js'
 
 const NAME = 'dynamodb'
-const DEFAULT_TABLE_NAME = 'payload'
 
 declare module 'payload' {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -53,36 +56,34 @@ declare module 'payload' {
 
 export function dynamoAdapter(args: Args = {}): DatabaseAdapterObj<DynamoAdapter> {
   function adapterInit({ payload }: { payload: Payload }): DynamoAdapter {
-    const tableName = args.tableName ?? DEFAULT_TABLE_NAME
+    const config = resolveAdapterConfig(args)
     const migrationDir = findMigrationDir(args.migrationDir)
 
     const resolvePartition = (slug: string): string => slug
     const resolveVersionsPartition = (slug: string): string => `${slug}_versions`
     const transactionSessions: DynamoAdapter['transactionSessions'] = {}
 
-    return createDatabaseAdapter<DynamoAdapter>({
+    // @ts-expect-error createDatabaseAdapter returns BaseDatabaseAdapter; runtime object is DynamoAdapter
+    return createDatabaseAdapter({
       name: NAME,
       packageName: PACKAGE_NAME,
       defaultIDType: 'text',
       payload,
       migrationDir,
-      bulkOperationsSingleTransaction: args.bulkOperationsSingleTransaction ?? false,
+      bulkOperationsSingleTransaction: config.bulkOperationsSingleTransaction,
       transactionSessions,
+      // @ts-expect-error Dynamo transaction sessions extend Payload's session map
       sessions: transactionSessions,
 
       // ----- adapter-specific state -----
+      config,
       clientConfig: args.clientConfig ?? {},
-      translateConfig: args.translateConfig ?? {
-        marshallOptions: {
-          removeUndefinedValues: true,
-          convertClassInstanceToMap: true,
-        },
-      },
+      translateConfig: resolveTranslateConfig(args),
       client: args.client,
       docClient: undefined,
       ownsClient: !args.client,
-      tableName,
-      ensureTables: args.ensureTables ?? false,
+      tableName: config.tableName,
+      ensureTables: config.ensureTables,
       resolvePartition,
       resolveVersionsPartition,
 
@@ -122,7 +123,7 @@ export function dynamoAdapter(args: Args = {}): DatabaseAdapterObj<DynamoAdapter
       updateOne,
       updateVersion,
       upsert,
-    })
+    }) as DynamoAdapter
   }
 
   return {

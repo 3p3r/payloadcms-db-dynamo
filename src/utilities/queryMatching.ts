@@ -2,6 +2,7 @@ import type { Where } from 'payload'
 import { adapterError, DOC_CLIENT_REQUIRED } from '../packageMeta.js'
 
 import { BatchGetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
+import chunk from 'lodash/chunk.js'
 
 import type { PartialPayloadRequest } from '../types.js'
 import type { DynamoAdapter } from '../types.js'
@@ -42,10 +43,7 @@ async function queryGsi1ByPk(
   let exclusiveStartKey: Record<string, unknown> | undefined
 
   while (true) {
-    const result = await dynamoSend<{
-      Items?: Record<string, unknown>[]
-      LastEvaluatedKey?: Record<string, unknown>
-    }>(
+    const result = await dynamoSend(
       adapter,
       req,
       new QueryCommand({
@@ -83,15 +81,14 @@ async function batchGetByKeys(
   if (keys.length === 0) return []
 
   const docs: Record<string, unknown>[] = []
-  for (let i = 0; i < keys.length; i += 100) {
-    const chunk = keys.slice(i, i + 100)
-    const result = await dynamoSend<{ Responses?: Record<string, Record<string, unknown>[]> }>(
+  for (const keyChunk of chunk(keys, adapter.config.batchGetChunkSize)) {
+    const result = await dynamoSend(
       adapter,
       req,
       new BatchGetCommand({
         RequestItems: {
           [adapter.tableName]: {
-            Keys: chunk.map((k) => ({ pk: k.pk, sk: k.sk })),
+            Keys: keyChunk.map((k) => ({ pk: k.pk, sk: k.sk })),
           },
         },
       }),
@@ -116,10 +113,7 @@ async function queryPartition(
   let exclusiveStartKey: Record<string, unknown> | undefined
 
   while (true) {
-    const result = await dynamoSend<{
-      Items?: Record<string, unknown>[]
-      LastEvaluatedKey?: Record<string, unknown>
-    }>(
+    const result = await dynamoSend(
       adapter,
       req,
       new QueryCommand({
@@ -166,10 +160,7 @@ async function queryInvertedIndex(
   let exclusiveStartKey: Record<string, unknown> | undefined
 
   while (true) {
-    const result = await dynamoSend<{
-      Items?: Record<string, unknown>[]
-      LastEvaluatedKey?: Record<string, unknown>
-    }>(
+    const result = await dynamoSend(
       adapter,
       req,
       new QueryCommand({
@@ -213,10 +204,7 @@ async function queryInvertedIn(
     const pk = invertedPk(collection, field, value)
     let exclusiveStartKey: Record<string, unknown> | undefined
     while (true) {
-      const result = await dynamoSend<{
-        Items?: Record<string, unknown>[]
-        LastEvaluatedKey?: Record<string, unknown>
-      }>(
+      const result = await dynamoSend(
         adapter,
         req,
         new QueryCommand({
@@ -315,10 +303,7 @@ async function querySearchNgramPartition(
   let exclusiveStartKey: Record<string, unknown> | undefined
 
   while (true) {
-    const result = await dynamoSend<{
-      Items?: Record<string, unknown>[]
-      LastEvaluatedKey?: Record<string, unknown>
-    }>(
+    const result = await dynamoSend(
       adapter,
       req,
       new QueryCommand({
@@ -376,7 +361,7 @@ async function querySearchNgram(
   req?: PartialPayloadRequest,
   maxItems?: number,
 ): Promise<Record<string, unknown>[]> {
-  const grams = searchNgrams(plan.searchText)
+  const grams = searchNgrams(plan.searchText, adapter.config.searchNgramLength)
   const docIds = new Set<string>()
   for (const field of plan.fields) {
     for (const id of await intersectSearchGrams(adapter, plan.collection, field, grams, req)) {

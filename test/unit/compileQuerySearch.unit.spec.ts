@@ -27,15 +27,19 @@ function searchAdapter() {
 describe('compileQuery search-ngram', () => {
   it('extractSearchLikeWhere parses single like and or groups', () => {
     const paths = ['title', 'slug']
-    expect(extractSearchLikeWhere({ title: { like: 'foo' } }, paths)?.searchText).toBe('foo')
+    const ngramLength = 3
+    expect(extractSearchLikeWhere({ title: { like: 'foo' } }, paths, ngramLength)?.searchText).toBe(
+      'foo',
+    )
     expect(
       extractSearchLikeWhere(
         { or: [{ title: { like: 'bar' } }, { slug: { like: 'bar' } }] },
         paths,
+        ngramLength,
       )?.fields.sort(),
     ).toEqual(['slug', 'title'])
-    expect(extractSearchLikeWhere({ title: { like: 'ab' } }, paths)).toBeNull()
-    expect(extractSearchLikeWhere({ title: { like: '   ' } }, paths)).toBeNull()
+    expect(extractSearchLikeWhere({ title: { like: 'ab' } }, paths, ngramLength)).toBeNull()
+    expect(extractSearchLikeWhere({ title: { like: '   ' } }, paths, ngramLength)).toBeNull()
   })
 
   it('compileQuery selects search-ngram for admin search where', () => {

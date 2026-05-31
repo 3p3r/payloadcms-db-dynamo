@@ -1,4 +1,5 @@
 import {
+  BatchGetCommand,
   DeleteCommand,
   GetCommand,
   PutCommand,
@@ -9,19 +10,18 @@ import {
 import { describe, expect, it, vi } from 'vitest'
 
 import type { DynamoTransactionSession } from '../../src/transactions/types.js'
-import type { DynamoAdapter } from '../../src/types.js'
 import { dynamoSend } from '../../src/utilities/dynamoSend.js'
+import { mockAdapter } from '../__helpers/mockAdapter.js'
 
-function sessionAdapter(session: DynamoTransactionSession): DynamoAdapter {
-  return {
-    docClient: {
-      send: vi.fn().mockResolvedValue({
-        Items: [{ pk: 'p', sk: '1', title: 'remote' }],
-      }),
-    },
+function sessionAdapter(session: DynamoTransactionSession) {
+  return mockAdapter({
+    send: vi.fn().mockResolvedValue({
+      Items: [{ pk: 'p', sk: '1', title: 'remote' }],
+    }),
     transactionSessions: { tx1: session },
+    sessions: { tx1: session },
     tableName: 't',
-  } as unknown as DynamoAdapter
+  })
 }
 
 describe('dynamoSend — transaction overlay', () => {
@@ -44,7 +44,7 @@ describe('dynamoSend — transaction overlay', () => {
       }),
     )
 
-    const got = await dynamoSend<{ Item?: Record<string, unknown> }>(
+    const got = await dynamoSend(
       adapter,
       req,
       new GetCommand({ TableName: 't', Key: { pk: 'p', sk: '1' } }),
@@ -62,7 +62,7 @@ describe('dynamoSend — transaction overlay', () => {
       }),
     )
 
-    const deletedOld = await dynamoSend<{ Attributes?: Record<string, unknown> }>(
+    const deletedOld = await dynamoSend(
       adapter,
       req,
       new DeleteCommand({
@@ -73,7 +73,7 @@ describe('dynamoSend — transaction overlay', () => {
     )
     expect(deletedOld.Attributes).toBeUndefined()
 
-    const afterDelete = await dynamoSend<{ Item?: Record<string, unknown> }>(
+    const afterDelete = await dynamoSend(
       adapter,
       req,
       new GetCommand({ TableName: 't', Key: { pk: 'p', sk: '1' } }),
@@ -89,7 +89,7 @@ describe('dynamoSend — transaction overlay', () => {
       }),
     )
 
-    const queried = await dynamoSend<{ Items?: Record<string, unknown>[] }>(
+    const queried = await dynamoSend(
       adapter,
       req,
       new QueryCommand({
@@ -127,12 +127,13 @@ describe('dynamoSend — transaction overlay', () => {
       overlay: new Map(),
       transactItems: [],
     }
-    const adapter = {
-      docClient: { send },
+    const adapter = mockAdapter({
+      send,
       transactionSessions: { tx1: session },
+      sessions: { tx1: session },
       tableName: 't',
-    } as unknown as DynamoAdapter
-    const got = await dynamoSend<{ Item?: Record<string, unknown> }>(
+    })
+    const got = await dynamoSend(
       adapter,
       { transactionID: 'tx1' },
       new GetCommand({ TableName: 't', Key: { pk: 'p', sk: '9' } }),
@@ -148,11 +149,11 @@ describe('dynamoSend — transaction overlay', () => {
       overlay: new Map(),
       transactItems: [],
     }
-    const adapter = {
-      docClient: { send: vi.fn() },
+    const adapter = mockAdapter({
       transactionSessions: { tx1: session },
+      sessions: { tx1: session },
       tableName: 't',
-    } as unknown as DynamoAdapter
+    })
     await dynamoSend(
       adapter,
       { transactionID: 'tx1' },
@@ -176,11 +177,11 @@ describe('dynamoSend — transaction overlay', () => {
       overlay: new Map([['p\x001', { pk: 'p', sk: '1', title: 'old' }]]),
       transactItems: [],
     }
-    const adapter = {
-      docClient: { send: vi.fn() },
+    const adapter = mockAdapter({
       transactionSessions: { tx1: session },
+      sessions: { tx1: session },
       tableName: 't',
-    } as unknown as DynamoAdapter
+    })
     await dynamoSend(
       adapter,
       { transactionID: 'tx1' },
@@ -197,9 +198,49 @@ describe('dynamoSend — transaction overlay', () => {
 
   it('passes through when no session is active', async () => {
     const send = vi.fn().mockResolvedValue({ Items: [] })
-    const adapter = { docClient: { send } } as unknown as DynamoAdapter
+    const adapter = mockAdapter({ send })
     await dynamoSend(adapter, undefined, new QueryCommand({ TableName: 't' }))
     expect(send).toHaveBeenCalled()
+  })
+
+  it('passes BatchGet through when no session is active', async () => {
+    const send = vi.fn().mockResolvedValue({ Responses: { t: [] } })
+    const adapter = mockAdapter({ send, tableName: 't' })
+    await dynamoSend(
+      adapter,
+      undefined,
+      new BatchGetCommand({
+        RequestItems: { t: { Keys: [{ pk: 'p', sk: '1' }] } },
+      }),
+    )
+    expect(send).toHaveBeenCalled()
+  })
+
+  it('buffered delete without ReturnValues returns stub output', async () => {
+    const session: DynamoTransactionSession = {
+      deleted: new Set(),
+      overlay: new Map([['p\x001', { id: '1', title: 'x' }]]),
+      transactItems: [],
+    }
+    const adapter = sessionAdapter(session)
+    const out = await dynamoSend(
+      adapter,
+      { transactionID: 'tx1' },
+      new DeleteCommand({ TableName: 't', Key: { pk: 'p', sk: '1' } }),
+    )
+    expect(out).toEqual({ $metadata: { httpStatusCode: 200 } })
+  })
+
+  it('throws when Put has no Item in a transaction', async () => {
+    const session: DynamoTransactionSession = {
+      deleted: new Set(),
+      overlay: new Map(),
+      transactItems: [],
+    }
+    const adapter = sessionAdapter(session)
+    await expect(
+      dynamoSend(adapter, { transactionID: 'tx1' }, new PutCommand({ TableName: 't' })),
+    ).rejects.toThrow(/Item/)
   })
 
   it('Get returns undefined when key is deleted in session', async () => {
@@ -209,7 +250,7 @@ describe('dynamoSend — transaction overlay', () => {
       transactItems: [],
     }
     const adapter = sessionAdapter(session)
-    const got = await dynamoSend<{ Item?: Record<string, unknown> }>(
+    const got = await dynamoSend(
       adapter,
       { transactionID: 'tx1' },
       new GetCommand({ TableName: 't', Key: { pk: 'p', sk: '1' } }),
@@ -226,12 +267,13 @@ describe('dynamoSend — transaction overlay', () => {
     const send = vi.fn().mockResolvedValue({
       Items: [{ pk: 'p', sk: '1', title: 'db' }],
     })
-    const adapter = {
-      docClient: { send },
+    const adapter = mockAdapter({
+      send,
       transactionSessions: { tx1: session },
+      sessions: { tx1: session },
       tableName: 't',
-    } as unknown as DynamoAdapter
-    const queried = await dynamoSend<{ Items?: Record<string, unknown>[] }>(
+    })
+    const queried = await dynamoSend(
       adapter,
       { transactionID: 'tx1' },
       new QueryCommand({
@@ -254,12 +296,13 @@ describe('dynamoSend — transaction overlay', () => {
       transactItems: [],
     }
     const send = vi.fn().mockResolvedValue({ Items: [] })
-    const adapter = {
-      docClient: { send },
+    const adapter = mockAdapter({
+      send,
       transactionSessions: { tx1: session },
+      sessions: { tx1: session },
       tableName: 't',
-    } as unknown as DynamoAdapter
-    const queried = await dynamoSend<{ Items?: Record<string, unknown>[] }>(
+    })
+    const queried = await dynamoSend(
       adapter,
       { transactionID: 'tx1' },
       new QueryCommand({
