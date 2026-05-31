@@ -15,7 +15,6 @@ import { GEO_INDEX_NAME } from '../schema/keys.js'
 import type { DynamoAdapter, PartialPayloadRequest } from '../types.js'
 import { dynamoSend } from '../utilities/dynamoSend.js'
 import { extractPolygonRing } from '../utilities/matchOperator.js'
-import { distanceMeters } from './distance.js'
 
 async function queryGeohashRange(
   adapter: DynamoAdapter,
@@ -137,30 +136,6 @@ export async function queryGeoDocIds(
   }
 
   return null
-}
-
-export function refineGeoNear(
-  doc: Record<string, unknown>,
-  fieldPath: string,
-  clause: unknown,
-): boolean {
-  const near = parseNearOperator(clause)
-  const point = parsePoint(getNestedValue(doc, fieldPath))
-  if (!near || !point) return false
-  const d = distanceMeters(point, near.center)
-  if (near.maxDistance !== undefined && d > near.maxDistance) return false
-  if (near.minDistance !== undefined && d < near.minDistance) return false
-  return true
-}
-
-function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-  const parts = path.split('.')
-  let cur: unknown = obj
-  for (const part of parts) {
-    if (cur === null || cur === undefined || typeof cur !== 'object') return undefined
-    cur = (cur as Record<string, unknown>)[part]
-  }
-  return cur
 }
 
 export function extractGeoClause(

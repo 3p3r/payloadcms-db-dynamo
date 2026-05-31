@@ -41,9 +41,11 @@ Test env:
 src/                 # adapter implementation
   index.ts           # dynamoAdapter factory + exports
   packageMeta.ts     # PACKAGE_NAME + adapterError()
+  index/             # projector + secondary index writes
+  geo/               # geohash + geo-index queries
   schema/            # CreateTable + GSI definitions
   transactions/      # buffered TransactWriteItems
-  utilities/         # query, filter, projection, geo
+  utilities/         # query, filter, projection
 test/
   unit/              # mocked, fast
   **/*.int.spec.ts   # DynamoDB Local + Payload

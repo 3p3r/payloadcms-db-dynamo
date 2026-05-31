@@ -88,5 +88,9 @@ export function compileQuery(
     return { kind: 'gsi1-list', collection, partition }
   }
 
-  return { kind: 'partition', partition, where }
+  return {
+    kind: 'partition',
+    partition,
+    ...(where !== undefined ? { where } : {}),
+  }
 }

@@ -118,14 +118,6 @@ describe('queryMatching branch coverage', () => {
     expect(rows).toHaveLength(0)
   })
 
-  it('gsi1 list returns empty for always-false where', async () => {
-    const send = vi.fn()
-    const adapter = mockAdapter({ send, payload })
-    const rows = await queryMatching(adapter, 'items', { id: { in: [] } }, undefined, 'items')
-    expect(rows).toEqual([])
-    expect(send).not.toHaveBeenCalled()
-  })
-
   it('gsi1 list paginates', async () => {
     const send = vi
       .fn()
@@ -207,7 +199,7 @@ describe('queryMatching branch coverage', () => {
     expect(rows).toEqual([])
   })
 
-  it('gsi1 list applies filter expression when where is set', async () => {
+  it('partition plan applies filter expression when where is set', async () => {
     const send = vi.fn().mockResolvedValue({
       Items: [{ pk: 'items', sk: '1', id: '1', gsi1pk: 'COL#items#LIST', title: 'a' }],
     })

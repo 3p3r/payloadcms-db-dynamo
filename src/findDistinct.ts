@@ -8,14 +8,8 @@ import { paginateSliceMeta, slicePage } from './utilities/paginateSlice.js'
 import { queryMatching } from './utilities/queryMatching.js'
 
 /**
- * v2 strategy: paginated `Query` over the collection's partition, JS `where`
- * filter has already been pushed down via `FilterExpression`, then dedup via
- * `Set` and sort + paginate the resulting value list.
- *
- * Dedup uses primitive equality. Object- or array-valued fields would compare
- * by reference, so if you `findDistinct` over a non-primitive field you'll
- * get one entry per item (no real dedup). Stringification-based dedup can
- * land if it turns out to matter.
+ * Loads matches through `queryMatching`, dedupes field values in memory, then
+ * sorts and paginates. Dedup uses primitive `Set` equality (not deep).
  */
 export const findDistinct: FindDistinct = async function findDistinct(
   this: DynamoAdapter,

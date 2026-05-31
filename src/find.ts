@@ -9,21 +9,11 @@ import { paginateSliceMeta, slicePage } from './utilities/paginateSlice.js'
 import { queryMatching } from './utilities/queryMatching.js'
 
 /**
- * v2 strategy: paginated `Query` over the collection's partition (`pk = slug`)
- * with `where` translated to `FilterExpression`, then in-memory sort and page
- * slice. `Query` reads only the rows in this collection's partition, so we no
- * longer pay to walk the whole table.
+ * Resolves matches via `queryMatching` (inverted / gsi1-list / geo-index / partition),
+ * then sorts and paginates in memory. Draft-enabled collections also merge
+ * draft-only parents from the versions partition (`draftsFallback`).
  *
- * For collections with `versions.drafts: true`, also pull `latest=true` rows
- * from the versions partition and union in any whose parent isn't already
- * represented in the main partition. This catches drafts-only docs (created
- * but never published) that would otherwise be invisible to `find`.
- *
- * Optimizations to land later:
- *  - Use `Query` against a GSI when the predicate matches an indexed key
- *    (e.g. `email` for auth, `slug` for public-facing collections).
- *  - Stream pages instead of materializing all matches when `pagination=false`
- *    and `limit` is small.
+ * See HANDOFF.md for paths that still read a full partition before paging.
  */
 export const find: Find = async function find(
   this: DynamoAdapter,
