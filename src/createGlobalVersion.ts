@@ -6,6 +6,12 @@ import { randomUUID } from 'node:crypto'
 
 import type { DynamoAdapter } from './types.js'
 
+import { applySecondaryWrites } from './index/applySecondaryWrites.js'
+import {
+  projectVersionIndexes,
+  projectVersionLatestPointerDelete,
+} from './index/projectVersionIndexes.js'
+import { dynamoSend } from './utilities/dynamoSend.js'
 import { findFirst } from './utilities/findFirst.js'
 import { normalizeForDynamo } from './utilities/normalizeForDynamo.js'
 import { projectVersionSnapshot } from './utilities/resolveSchema.js'
@@ -57,10 +63,21 @@ export const createGlobalVersion: CreateGlobalVersion = async function createGlo
     ...(publishedLocale !== undefined ? { publishedLocale } : {}),
   }
 
+  const indexProjection = projectVersionIndexes({
+    collectionSlug: globalSlug,
+    versionsPartition: partition,
+    versionId: id,
+    parentId: globalSlug,
+    updatedAt: String(updatedAt),
+    latest: true,
+    beforeLatest: false,
+  })
+
   const putItem = normalizeForDynamo({
     ...item,
     pk: partition,
     sk: id,
+    ...indexProjection.mainAttributes,
   })
 
   const transactItems: NonNullable<
@@ -68,14 +85,21 @@ export const createGlobalVersion: CreateGlobalVersion = async function createGlo
   > = []
 
   if (previousLatest) {
+    const prevId = String(previousLatest['id'])
     transactItems.push({
       Update: {
         TableName: this.tableName,
-        Key: { pk: partition, sk: String(previousLatest['id']) },
+        Key: { pk: partition, sk: prevId },
         UpdateExpression: 'SET #latest = :false',
         ExpressionAttributeNames: { '#latest': 'latest' },
         ExpressionAttributeValues: { ':false': false },
         ConditionExpression: 'attribute_exists(pk)',
+      },
+    })
+    transactItems.push({
+      Delete: {
+        TableName: this.tableName,
+        Key: projectVersionLatestPointerDelete(globalSlug, prevId),
       },
     })
   }
@@ -87,7 +111,11 @@ export const createGlobalVersion: CreateGlobalVersion = async function createGlo
     },
   })
 
-  await docClient.send(new TransactWriteCommand({ TransactItems: transactItems }))
+  await dynamoSend(this, undefined, new TransactWriteCommand({ TransactItems: transactItems }))
+  await applySecondaryWrites(this, undefined, {
+    puts: indexProjection.puts,
+    deletes: indexProjection.deletes,
+  })
 
   return returning === false ? (null as never) : (item as never)
 }

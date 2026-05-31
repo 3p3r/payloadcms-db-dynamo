@@ -7,6 +7,11 @@ import {
   listSpineGsi1pk,
   listSpineGsi1sk,
   normalizeIndexValue,
+  versionGsi1sk,
+  versionLatestGsi1pk,
+  versionLatestPointerPk,
+  versionLatestPointerSk,
+  versionParentGsi1pk,
 } from '../../src/schema/keys.js'
 
 describe('schema/keys', () => {
@@ -25,5 +30,10 @@ describe('schema/keys', () => {
     expect(listSpineGsi1sk('2024', 'id1')).toBe('2024#DOC#id1')
     expect(geoPk('places', 'loc', 12)).toBe('GEO#places#loc#12')
     expect(geoSk('id1')).toBe('DOC#id1')
+    expect(versionLatestGsi1pk('posts')).toBe('COL#posts#VER#LATEST')
+    expect(versionParentGsi1pk('posts', 'p1')).toBe('VER#posts#PARENT#p1')
+    expect(versionGsi1sk('2024-01-01', 'v1')).toBe('2024-01-01#VER#v1')
+    expect(versionLatestPointerPk('posts')).toBe('COL#posts#VER#LATEST')
+    expect(versionLatestPointerSk('v1')).toBe('REF#v1')
   })
 })

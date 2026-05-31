@@ -39,11 +39,7 @@ export const SUPPORTED_OPERATORS = new Set([
 /** Operators that cannot be pushed into DynamoDB `FilterExpression`. */
 export const JS_ONLY_OPERATORS = new Set(['like', 'not_like', 'contains', 'all'])
 
-/**
- * Geo operators — use `geo-index` only when `compileQuery` picks a top-level geo
- * plan (`extractGeoClause`). If geo appears only under `and`/`or`, these still
- * force a partition scan via `whereHasJsOnlyOperator` (see HANDOFF.md).
- */
+/** Geo operators — handled by `compileQuery` geo plan, not `FilterExpression`. */
 export const GEO_OPERATORS = new Set(['near', 'within', 'intersects'])
 
 export const FILTER_NON_PUSHABLE_OPERATORS = new Set([
@@ -78,7 +74,7 @@ export function whereHasJsOnlyOperator(where: undefined | Where): boolean {
     }
     if (!raw || typeof raw !== 'object') continue
     for (const op of Object.keys(raw)) {
-      if (JS_ONLY_OPERATORS.has(op) || GEO_OPERATORS.has(op)) return true
+      if (JS_ONLY_OPERATORS.has(op)) return true
     }
   }
   return false

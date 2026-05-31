@@ -4,6 +4,7 @@ import type { DynamoAdapter } from './types.js'
 
 import { applySorts } from './utilities/applySorts.js'
 import { paginateSliceMeta, slicePage } from './utilities/paginateSlice.js'
+import { queryCount } from './utilities/queryCount.js'
 import { queryMatching } from './utilities/queryMatching.js'
 
 /**
@@ -18,10 +19,12 @@ export const findVersions: FindVersions = async function findVersions(
   { collection, limit = 10, page = 1, pagination = true, sort, where },
 ) {
   const partition = this.resolveVersionsPartition(collection)
-  const matched = await queryMatching(this, partition, where)
+  const maxItems =
+    sort || !pagination || limit <= 0 ? undefined : limit * Math.max(1, page)
+  const matched = await queryMatching(this, partition, where, undefined, collection, maxItems)
   applySorts(matched, sort)
 
-  const totalDocs = matched.length
+  const totalDocs = await queryCount(this, partition, where, collection)
   const meta = paginateSliceMeta({ limit, page, pagination, totalDocs })
   const docs = slicePage(matched, meta)
 

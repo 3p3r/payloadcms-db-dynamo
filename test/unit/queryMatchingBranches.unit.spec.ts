@@ -27,13 +27,9 @@ describe('queryMatching branch coverage', () => {
     config: { globals: [] },
   } as never
 
-  it('partition query skips idx/geo entity rows', async () => {
+  it('gsi1 filtered list returns matching rows', async () => {
     const send = vi.fn().mockResolvedValue({
-      Items: [
-        { pk: 'items', sk: 'idx', entityType: 'idx' },
-        { pk: 'items', sk: 'geo', entityType: 'geo' },
-        { pk: 'items', sk: '1', id: '1', title: 'ok' },
-      ],
+      Items: [{ pk: 'items', sk: '1', id: '1', gsi1pk: 'COL#items#LIST', title: 'ok' }],
     })
     const adapter = mockAdapter({ send, payload })
     const rows = await queryMatching(
@@ -45,6 +41,201 @@ describe('queryMatching branch coverage', () => {
     )
     expect(rows).toHaveLength(1)
     expect(rows[0]?.id).toBe('1')
+    expect(send.mock.calls[0]![0].input.IndexName).toBe('gsi1')
+  })
+
+  it('inverted-in applies remainder and maxItems', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Items: [{ pk: 'IDX#items#email#a', sk: '1', docId: '1' }] })
+      .mockResolvedValue({
+        Responses: {
+          t: [
+            { pk: 'items', sk: '1', id: '1', email: 'a', score: 1 },
+            { pk: 'items', sk: '2', id: '2', email: 'a', score: 9 },
+          ],
+        },
+      })
+    const adapter = mockAdapter({
+      send,
+      tableName: 't',
+      payload: {
+        collections: {
+          items: {
+            config: {
+              fields: [
+                { name: 'email', type: 'email' },
+                { name: 'score', type: 'number' },
+              ],
+              sanitizedIndexes: [{ fields: ['email'], unique: true }],
+            },
+          },
+        },
+        config: { globals: [] },
+      } as never,
+    })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { in: ['a'] }, score: { greater_than: 5 } },
+      undefined,
+      'items',
+      1,
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.score).toBe(9)
+  })
+
+  it('inverted-in paginates each index partition', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [{ pk: 'IDX#items#email#a', sk: '1', docId: '1' }],
+        LastEvaluatedKey: { pk: 'IDX#items#email#a', sk: '1' },
+      })
+      .mockResolvedValueOnce({ Items: [{ pk: 'IDX#items#email#b', sk: '2', docId: '2' }] })
+      .mockResolvedValue({
+        Responses: {
+          t: [
+            { pk: 'items', sk: '1', id: '1' },
+            { pk: 'items', sk: '2', id: '2' },
+          ],
+        },
+      })
+    const adapter = mockAdapter({
+      send,
+      tableName: 't',
+      payload: {
+        collections: {
+          items: {
+            config: {
+              fields: [{ name: 'email', type: 'email' }],
+              sanitizedIndexes: [{ fields: ['email'], unique: true }],
+            },
+          },
+        },
+        config: { globals: [] },
+      } as never,
+    })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { in: ['a', 'b'] } },
+      undefined,
+      'items',
+    )
+    expect(rows).toHaveLength(2)
+  })
+
+  it('geo plan without remainder', async () => {
+    vi.spyOn(queryGeoModule, 'queryGeoDocIds').mockResolvedValue(new Set(['1']))
+    vi.spyOn(batchGetDocsModule, 'batchGetCollectionDocs').mockResolvedValue([
+      { id: '1', location: [-122.4194, 37.7749] },
+    ])
+    const adapter = mockAdapter({ payload })
+    const rows = await queryMatching(
+      adapter,
+      'places',
+      { location: { near: [-122.4194, 37.7749, 500_000] } },
+      undefined,
+      'places',
+    )
+    expect(rows).toHaveLength(1)
+    vi.restoreAllMocks()
+  })
+
+  it('inverted-in unions index partitions', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Items: [{ pk: 'IDX#items#email#a', sk: '1', docId: '1' }] })
+      .mockResolvedValueOnce({ Items: [{ pk: 'IDX#items#email#b', sk: '2', docId: '2' }] })
+      .mockResolvedValue({
+        Responses: {
+          t: [
+            { pk: 'items', sk: '1', id: '1', email: 'a' },
+            { pk: 'items', sk: '2', id: '2', email: 'b' },
+          ],
+        },
+      })
+    const adapter = mockAdapter({
+      send,
+      tableName: 't',
+      payload: {
+        collections: {
+          items: {
+            config: {
+              fields: [{ name: 'email', type: 'email' }],
+              sanitizedIndexes: [{ fields: ['email'], unique: true }],
+            },
+          },
+        },
+        config: { globals: [] },
+      } as never,
+    })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { in: ['a', 'b'] } },
+      undefined,
+      'items',
+    )
+    expect(rows).toHaveLength(2)
+  })
+
+  it('stops after maxItems', async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [
+        { pk: 'items', sk: '1', id: '1', gsi1pk: 'COL#items#LIST' },
+        { pk: 'items', sk: '2', id: '2', gsi1pk: 'COL#items#LIST' },
+        { pk: 'items', sk: '3', id: '3', gsi1pk: 'COL#items#LIST' },
+      ],
+    })
+    const adapter = mockAdapter({ send, payload })
+    const rows = await queryMatching(adapter, 'items', undefined, undefined, 'items', 2)
+    expect(rows).toHaveLength(2)
+  })
+
+  it('inverted index respects maxItems after batch get', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [
+          { pk: 'IDX#items#email#a', sk: '1', docId: '1' },
+          { pk: 'IDX#items#email#a', sk: '2', docId: '2' },
+        ],
+      })
+      .mockResolvedValue({
+        Responses: {
+          t: [
+            { pk: 'items', sk: '1', id: '1', email: 'a' },
+            { pk: 'items', sk: '2', id: '2', email: 'a' },
+          ],
+        },
+      })
+    const adapter = mockAdapter({
+      send,
+      tableName: 't',
+      payload: {
+        collections: {
+          items: {
+            config: {
+              fields: [{ name: 'email', type: 'email' }],
+              sanitizedIndexes: [{ fields: ['email'], unique: true }],
+            },
+          },
+        },
+        config: { globals: [] },
+      } as never,
+    })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { equals: 'a' } },
+      undefined,
+      'items',
+      1,
+    )
+    expect(rows).toHaveLength(1)
   })
 
   it('inverted index paginates and uses sk when docId missing', async () => {
@@ -199,7 +390,7 @@ describe('queryMatching branch coverage', () => {
     expect(rows).toEqual([])
   })
 
-  it('partition plan applies filter expression when where is set', async () => {
+  it('gsi1 list applies filter expression when where is set', async () => {
     const send = vi.fn().mockResolvedValue({
       Items: [{ pk: 'items', sk: '1', id: '1', gsi1pk: 'COL#items#LIST', title: 'a' }],
     })
@@ -213,6 +404,87 @@ describe('queryMatching branch coverage', () => {
     )
     expect(rows).toHaveLength(1)
     expect(send.mock.calls[0]![0].input.FilterExpression).toBeDefined()
+    expect(send.mock.calls[0]![0].input.IndexName).toBe('gsi1')
+  })
+
+  it('queries version-parent gsi1', async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [{ pk: 'posts_versions', sk: 'v1', id: 'v1', parent: 'p1', gsi1pk: 'VER#posts#PARENT#p1' }],
+    })
+    const adapter = mockAdapter({ send, tableName: 't', payload })
+    const rows = await queryMatching(
+      adapter,
+      'posts_versions',
+      { parent: { equals: 'p1' } },
+      undefined,
+      'posts',
+    )
+    expect(rows).toHaveLength(1)
+    expect(send.mock.calls[0]![0].input.IndexName).toBe('gsi1')
+  })
+
+  it('version-parent respects maxItems', async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [
+        { pk: 'posts_versions', sk: 'v1', id: 'v1', gsi1pk: 'VER#posts#PARENT#p1' },
+        { pk: 'posts_versions', sk: 'v2', id: 'v2', gsi1pk: 'VER#posts#PARENT#p1' },
+      ],
+    })
+    const adapter = mockAdapter({ send, tableName: 't', payload })
+    const rows = await queryMatching(
+      adapter,
+      'posts_versions',
+      { parent: { equals: 'p1' } },
+      undefined,
+      'posts',
+      1,
+    )
+    expect(rows).toHaveLength(1)
+  })
+
+  it('version-latest returns empty when pointers lack ver-latest entity', async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [{ gsi1pk: 'COL#posts#VER#LATEST', sk: 'REF#v1' }],
+    })
+    const adapter = mockAdapter({ send, tableName: 't', payload })
+    const rows = await queryMatching(
+      adapter,
+      'posts_versions',
+      { latest: { equals: true } },
+      undefined,
+      'posts',
+    )
+    expect(rows).toEqual([])
+  })
+
+  it('queries version-latest gsi1 pointers', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [
+          {
+            entityType: 'ver-latest',
+            targetPk: 'posts_versions',
+            targetSk: 'v1',
+            gsi1pk: 'COL#posts#VER#LATEST',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        Responses: {
+          t: [{ pk: 'posts_versions', sk: 'v1', id: 'v1', latest: true, parent: 'p1' }],
+        },
+      })
+    const adapter = mockAdapter({ send, tableName: 't', payload })
+    const rows = await queryMatching(
+      adapter,
+      'posts_versions',
+      { latest: { equals: true } },
+      undefined,
+      'posts',
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.id).toBe('v1')
   })
 
   it('partition scan applies js-only operators', async () => {

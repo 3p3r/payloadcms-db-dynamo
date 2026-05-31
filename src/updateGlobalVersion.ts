@@ -5,6 +5,11 @@ import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb'
 
 import type { DynamoAdapter } from './types.js'
 
+import { applySecondaryWrites } from './index/applySecondaryWrites.js'
+import {
+  projectVersionIndexes,
+  projectVersionLatestPointerDelete,
+} from './index/projectVersionIndexes.js'
 import { findFirst } from './utilities/findFirst.js'
 import { normalizeForDynamo } from './utilities/normalizeForDynamo.js'
 import { projectVersionRow } from './utilities/resolveSchema.js'
@@ -56,6 +61,18 @@ export const updateGlobalVersion: UpdateGlobalVersion = async function updateGlo
     merged,
   )
 
+  const wasLatest = target['latest'] === true
+  const isLatest = projected['latest'] === true
+  const indexProjection = projectVersionIndexes({
+    collectionSlug: args.global,
+    versionsPartition: partition,
+    versionId: String(projected['id']),
+    parentId: args.global,
+    updatedAt: String(projected['updatedAt'] ?? projected['createdAt']),
+    latest: isLatest,
+    beforeLatest: wasLatest && !isLatest,
+  })
+
   await docClient.send(
     new PutCommand({
       TableName: this.tableName,
@@ -63,9 +80,19 @@ export const updateGlobalVersion: UpdateGlobalVersion = async function updateGlo
         ...projected,
         pk: partition,
         sk: String(projected['id']),
+        ...indexProjection.mainAttributes,
       }),
     }),
   )
+
+  const deletes = [...indexProjection.deletes]
+  if (wasLatest && !isLatest) {
+    deletes.push(projectVersionLatestPointerDelete(args.global, String(projected['id'])))
+  }
+  await applySecondaryWrites(this, undefined, {
+    puts: indexProjection.puts,
+    deletes,
+  })
 
   if (args.returning === false) {
     return null as never

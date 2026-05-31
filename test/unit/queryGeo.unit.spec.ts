@@ -16,10 +16,65 @@ describe('geo/queryGeo', () => {
     expect(ids).toBeNull()
   })
 
-  it('returns null when geo is nested in and', () => {
-    expect(
-      extractGeoClause({ and: [{ location: { near: [1, 2, 3] } }] } as never),
-    ).toBeNull()
+  it('extracts geo from and without sibling remainder', () => {
+    const clause = extractGeoClause({
+      and: [{ location: { near: [1, 2, 3] } }],
+    } as never)
+    expect(clause?.remainder).toBeUndefined()
+  })
+
+  it('extracts geo with top-level remainder after and group', () => {
+    const clause = extractGeoClause({
+      and: [{ location: { near: [1, 2, 3] } }],
+      status: { equals: 'open' },
+    } as never)
+    expect(clause?.field).toBe('location')
+    expect(clause?.remainder).toEqual({ status: { equals: 'open' } })
+  })
+
+  it('extracts geo nested in or', () => {
+    const clause = extractGeoClause({
+      or: [{ location: { within: { coordinates: [] } } }, { name: { equals: 'x' } }],
+    } as never)
+    expect(clause?.operator).toBe('within')
+    expect(clause?.remainder).toEqual({ name: { equals: 'x' } })
+  })
+
+  it('wraps multiple or siblings in remainder', () => {
+    const clause = extractGeoClause({
+      or: [
+        { location: { intersects: { type: 'Polygon' } } },
+        { name: { equals: 'a' } },
+        { status: { equals: 'b' } },
+      ],
+    } as never)
+    expect(clause?.operator).toBe('intersects')
+    expect(clause?.remainder?.or).toHaveLength(2)
+  })
+
+  it('extracts geo nested in and with sibling remainder', () => {
+    const clause = extractGeoClause({
+      and: [{ location: { near: [1, 2, 3] } }, { name: { equals: 'SF' } }],
+    } as never)
+    expect(clause?.field).toBe('location')
+    expect(clause?.operator).toBe('near')
+    expect(clause?.remainder).toEqual({ name: { equals: 'SF' } })
+  })
+
+  it('wraps multiple and siblings in remainder', () => {
+    const clause = extractGeoClause({
+      and: [
+        { location: { near: [1, 2, 3] } },
+        { name: { equals: 'a' } },
+        { status: { equals: 'b' } },
+      ],
+    } as never)
+    expect(clause?.remainder?.and).toHaveLength(2)
+  })
+
+  it('returns null when where has no geo operator', () => {
+    expect(extractGeoClause({ title: { equals: 'a' } })).toBeNull()
+    expect(extractGeoClause(undefined)).toBeNull()
   })
 
   it('extracts top-level geo clause', () => {

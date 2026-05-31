@@ -3,6 +3,8 @@ import type { Where } from 'payload'
 import { extractGeoClause } from '../geo/queryGeo.js'
 import { collectDeclaredIndexPaths } from '../schema/collectFields.js'
 import type { DynamoAdapter } from '../types.js'
+import { buildFilterExpression } from './buildFilterExpression.js'
+import { whereHasJsOnlyOperator } from './operators.js'
 
 export type QueryPlan =
   | {
@@ -18,6 +20,13 @@ export type QueryPlan =
       remainder?: Where
     }
   | {
+      kind: 'inverted-in'
+      collection: string
+      field: string
+      values: unknown[]
+      remainder?: Where
+    }
+  | {
       kind: 'geo'
       collection: string
       field: string
@@ -29,9 +38,21 @@ export type QueryPlan =
       kind: 'gsi1-list'
       collection: string
       partition: string
+      where?: Where
+    }
+  | {
+      kind: 'version-latest-gsi1'
+      collection: string
+      where?: Where
+    }
+  | {
+      kind: 'version-parent-gsi1'
+      collection: string
+      parentId: string
+      where?: Where
     }
 
-function extractIndexedEquals(
+export function extractIndexedEquals(
   where: Where | undefined,
   indexPaths: string[],
 ): { field: string; value: unknown; remainder?: Where } | null {
@@ -49,15 +70,125 @@ function extractIndexedEquals(
   return null
 }
 
+export function extractIndexedIn(
+  where: Where | undefined,
+  indexPaths: string[],
+): { field: string; values: unknown[]; remainder?: Where } | null {
+  if (!where || indexPaths.length === 0) return null
+  for (const field of indexPaths) {
+    const clause = where[field]
+    if (!clause || typeof clause !== 'object') continue
+    if ('in' in clause && Array.isArray(clause.in) && clause.in.length > 0) {
+      const remainder = { ...where }
+      delete remainder[field]
+      const rem = Object.keys(remainder).length ? (remainder as Where) : undefined
+      return { field, values: clause.in, ...(rem ? { remainder: rem } : {}) }
+    }
+  }
+  return null
+}
+
+export function canUseGsi1ListPlan(
+  adapter: DynamoAdapter,
+  collection: string,
+  where: Where | undefined,
+  indexPaths: string[],
+): boolean {
+  if (!adapter.payload?.collections?.[collection]) return false
+  if (extractGeoClause(where)) return false
+  if (extractIndexedEquals(where, indexPaths)) return false
+  if (extractIndexedIn(where, indexPaths)) return false
+  if (whereHasJsOnlyOperator(where)) return false
+  if (buildFilterExpression(where) === null) return false
+  return true
+}
+
+function collectionSlugFromVersionsPartition(partition: string): string | null {
+  if (!partition.endsWith('_versions')) return null
+  return partition.slice(0, -'_versions'.length)
+}
+
+function canPushFilter(where: Where | undefined): boolean {
+  if (extractGeoClause(where)) return false
+  if (whereHasJsOnlyOperator(where)) return false
+  if (buildFilterExpression(where) === null) return false
+  return true
+}
+
+function extractVersionLatestWhere(
+  where: Where | undefined,
+): { remainder?: Where } | null {
+  if (!where) return null
+  const latestClause = where['latest']
+  if (
+    latestClause &&
+    typeof latestClause === 'object' &&
+    !Array.isArray(latestClause) &&
+    'equals' in latestClause &&
+    (latestClause as Record<string, unknown>)['equals'] === true
+  ) {
+    const remainder = { ...where }
+    delete remainder['latest']
+    const rem = Object.keys(remainder).length ? (remainder as Where) : undefined
+    return rem ? { remainder: rem } : {}
+  }
+  return null
+}
+
+function extractVersionParentWhere(
+  where: Where | undefined,
+): { parentId: string; remainder?: Where } | null {
+  const parentRaw = where?.['parent']
+  if (!parentRaw || typeof parentRaw !== 'object' || Array.isArray(parentRaw)) return null
+  const parentClause = parentRaw as Record<string, unknown>
+  if (!('equals' in parentClause) || parentClause['equals'] === undefined) return null
+  const remainder = { ...where }
+  delete remainder['parent']
+  const rem = Object.keys(remainder).length ? (remainder as Where) : undefined
+  return {
+    parentId: String(parentClause['equals']),
+    ...(rem ? { remainder: rem } : {}),
+  }
+}
+
 export function compileQuery(
   adapter: DynamoAdapter,
   collection: string,
   where: Where | undefined,
+  options?: { partition?: string },
 ): QueryPlan {
   const partition =
-    typeof adapter.resolvePartition === 'function'
+    options?.partition ??
+    (typeof adapter.resolvePartition === 'function'
       ? adapter.resolvePartition(collection)
-      : collection
+      : collection)
+
+  const versionSlug = collectionSlugFromVersionsPartition(partition)
+  if (versionSlug) {
+    const latest = extractVersionLatestWhere(where)
+    if (latest !== null && canPushFilter(latest.remainder)) {
+      return {
+        kind: 'version-latest-gsi1',
+        collection: versionSlug,
+        ...(latest.remainder ? { where: latest.remainder } : {}),
+      }
+    }
+    const parent = extractVersionParentWhere(where)
+    if (parent && canPushFilter(parent.remainder)) {
+      return {
+        kind: 'version-parent-gsi1',
+        collection: versionSlug,
+        parentId: parent.parentId,
+        ...(parent.remainder ? { where: parent.remainder } : {}),
+      }
+    }
+    return {
+      kind: 'partition',
+      partition,
+      ...(where !== undefined ? { where } : {}),
+    }
+  }
+
   const config = adapter.payload?.collections?.[collection]?.config
   const indexPaths = config ? collectDeclaredIndexPaths(config) : []
 
@@ -73,6 +204,17 @@ export function compileQuery(
     }
   }
 
+  const indexedIn = extractIndexedIn(where, indexPaths)
+  if (indexedIn) {
+    return {
+      kind: 'inverted-in',
+      collection,
+      field: indexedIn.field,
+      values: indexedIn.values,
+      ...(indexedIn.remainder ? { remainder: indexedIn.remainder } : {}),
+    }
+  }
+
   const indexed = extractIndexedEquals(where, indexPaths)
   if (indexed) {
     return {
@@ -84,8 +226,13 @@ export function compileQuery(
     }
   }
 
-  if ((!where || Object.keys(where).length === 0) && adapter.payload?.collections?.[collection]) {
-    return { kind: 'gsi1-list', collection, partition }
+  if (canUseGsi1ListPlan(adapter, collection, where, indexPaths)) {
+    return {
+      kind: 'gsi1-list',
+      collection,
+      partition,
+      ...(where !== undefined ? { where } : {}),
+    }
   }
 
   return {

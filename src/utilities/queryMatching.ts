@@ -1,26 +1,114 @@
 import type { Where } from 'payload'
 import { adapterError, DOC_CLIENT_REQUIRED } from '../packageMeta.js'
 
-import { QueryCommand } from '@aws-sdk/lib-dynamodb'
+import { BatchGetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
 
 import type { PartialPayloadRequest } from '../types.js'
 import type { DynamoAdapter } from '../types.js'
 
 import { queryGeoDocIds } from '../geo/queryGeo.js'
-import { invertedPk, listSpineGsi1pk, GSI1_INDEX_NAME } from '../schema/keys.js'
+import {
+  invertedPk,
+  listSpineGsi1pk,
+  versionLatestGsi1pk,
+  versionParentGsi1pk,
+  GSI1_INDEX_NAME,
+} from '../schema/keys.js'
 import { batchGetCollectionDocs } from './batchGetDocs.js'
 import { dynamoSend } from './dynamoSend.js'
 import { buildFilterExpression } from './buildFilterExpression.js'
-import { compileQuery } from './compileQuery.js'
+import { compileQuery, type QueryPlan } from './compileQuery.js'
 import { matchesWhere } from './matchesWhere.js'
 import { whereHasJsOnlyOperator } from './operators.js'
 import { stripInternalKeys } from './stripInternalKeys.js'
+
+
+function shouldStop(matched: unknown[], maxItems?: number): boolean {
+  return maxItems !== undefined && maxItems > 0 && matched.length >= maxItems
+}
+
+async function queryGsi1ByPk(
+  adapter: DynamoAdapter,
+  gsi1pk: string,
+  where: Where | undefined,
+  req: PartialPayloadRequest | undefined,
+  maxItems?: number,
+): Promise<Record<string, unknown>[]> {
+  const filter = buildFilterExpression(where)
+  if (filter === null) return []
+  const matched: Record<string, unknown>[] = []
+  let exclusiveStartKey: Record<string, unknown> | undefined
+
+  while (true) {
+    const result = await dynamoSend<{
+      Items?: Record<string, unknown>[]
+      LastEvaluatedKey?: Record<string, unknown>
+    }>(
+      adapter,
+      req,
+      new QueryCommand({
+        TableName: adapter.tableName,
+        IndexName: GSI1_INDEX_NAME,
+        KeyConditionExpression: '#gpk = :gpk',
+        ExpressionAttributeNames: {
+          '#gpk': 'gsi1pk',
+          ...(filter?.names ?? {}),
+        },
+        ExpressionAttributeValues: {
+          ':gpk': gsi1pk,
+          ...(filter?.values ?? {}),
+        },
+        ...(filter ? { FilterExpression: filter.expression } : {}),
+        ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+      }),
+    )
+    for (const item of result.Items ?? []) {
+      matched.push(item)
+      if (shouldStop(matched, maxItems)) return matched
+    }
+    if (!result.LastEvaluatedKey) break
+    exclusiveStartKey = result.LastEvaluatedKey
+  }
+
+  return matched
+}
+
+async function batchGetByKeys(
+  adapter: DynamoAdapter,
+  keys: Array<{ pk: string; sk: string }>,
+  req?: PartialPayloadRequest,
+): Promise<Record<string, unknown>[]> {
+  if (keys.length === 0) return []
+  const docClient = adapter.docClient
+  if (!docClient) throw adapterError(DOC_CLIENT_REQUIRED)
+
+  const docs: Record<string, unknown>[] = []
+  for (let i = 0; i < keys.length; i += 100) {
+    const chunk = keys.slice(i, i + 100)
+    const result = await dynamoSend<{ Responses?: Record<string, Record<string, unknown>[]> }>(
+      adapter,
+      req,
+      new BatchGetCommand({
+        RequestItems: {
+          [adapter.tableName]: {
+            Keys: chunk.map((k) => ({ pk: k.pk, sk: k.sk })),
+          },
+        },
+      }),
+    )
+    for (const item of result.Responses?.[adapter.tableName] ?? []) {
+      docs.push(stripInternalKeys(item))
+    }
+  }
+  return docs
+}
 
 async function queryPartition(
   adapter: DynamoAdapter,
   partition: string,
   where: undefined | Where,
   req?: PartialPayloadRequest,
+  maxItems?: number,
 ): Promise<Record<string, unknown>[]> {
   const filter = buildFilterExpression(where)
   if (filter === null) return []
@@ -53,6 +141,7 @@ async function queryPartition(
     for (const item of result.Items ?? []) {
       if (item['entityType'] === 'idx' || item['entityType'] === 'geo') continue
       matched.push(stripInternalKeys(item))
+      if (shouldStop(matched, maxItems)) return matched
     }
     if (!result.LastEvaluatedKey) break
     exclusiveStartKey = result.LastEvaluatedKey
@@ -68,6 +157,7 @@ async function queryInvertedIndex(
   value: unknown,
   remainder: Where | undefined,
   req?: PartialPayloadRequest,
+  maxItems?: number,
 ): Promise<Record<string, unknown>[]> {
   const pk = invertedPk(collection, field, value)
   const ids: string[] = []
@@ -101,6 +191,57 @@ async function queryInvertedIndex(
   if (remainder) {
     docs = docs.filter((row) => matchesWhere(row, remainder))
   }
+  if (maxItems !== undefined && maxItems > 0) {
+    docs = docs.slice(0, maxItems)
+  }
+  return docs
+}
+
+async function queryInvertedIn(
+  adapter: DynamoAdapter,
+  collection: string,
+  field: string,
+  values: unknown[],
+  remainder: Where | undefined,
+  req?: PartialPayloadRequest,
+  maxItems?: number,
+): Promise<Record<string, unknown>[]> {
+  const idSet = new Set<string>()
+  for (const value of values) {
+    const pk = invertedPk(collection, field, value)
+    let exclusiveStartKey: Record<string, unknown> | undefined
+    while (true) {
+      const result = await dynamoSend<{
+        Items?: Record<string, unknown>[]
+        LastEvaluatedKey?: Record<string, unknown>
+      }>(
+        adapter,
+        req,
+        new QueryCommand({
+          TableName: adapter.tableName,
+          KeyConditionExpression: '#pk = :pk',
+          ExpressionAttributeNames: { '#pk': 'pk' },
+          ExpressionAttributeValues: { ':pk': pk },
+          ConsistentRead: true,
+          ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+        }),
+      )
+      for (const item of result.Items ?? []) {
+        const docId = item['docId'] ?? item['sk']
+        if (docId) idSet.add(String(docId))
+      }
+      if (!result.LastEvaluatedKey) break
+      exclusiveStartKey = result.LastEvaluatedKey
+    }
+  }
+
+  let docs = await batchGetCollectionDocs(adapter, collection, [...idSet], req)
+  if (remainder) {
+    docs = docs.filter((row) => matchesWhere(row, remainder))
+  }
+  if (maxItems !== undefined && maxItems > 0) {
+    docs = docs.slice(0, maxItems)
+  }
   return docs
 }
 
@@ -109,50 +250,63 @@ async function queryGsi1List(
   collection: string,
   where: Where | undefined,
   req?: PartialPayloadRequest,
+  maxItems?: number,
 ): Promise<Record<string, unknown>[]> {
-  const gsi1pk = listSpineGsi1pk(collection)
-  const filter = buildFilterExpression(where)
-  if (filter === null) return []
-  const matched: Record<string, unknown>[] = []
-  let exclusiveStartKey: Record<string, unknown> | undefined
-
-  while (true) {
-    const result = await dynamoSend<{
-      Items?: Record<string, unknown>[]
-      LastEvaluatedKey?: Record<string, unknown>
-    }>(
-      adapter,
-      req,
-      new QueryCommand({
-        TableName: adapter.tableName,
-        IndexName: GSI1_INDEX_NAME,
-        KeyConditionExpression: '#gpk = :gpk',
-        ExpressionAttributeNames: {
-          '#gpk': 'gsi1pk',
-          ...(filter?.names ?? {}),
-        },
-        ExpressionAttributeValues: {
-          ':gpk': gsi1pk,
-          ...(filter?.values ?? {}),
-        },
-        ...(filter ? { FilterExpression: filter.expression } : {}),
-        ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
-      }),
-    )
-    for (const item of result.Items ?? []) {
-      matched.push(stripInternalKeys(item))
-    }
-    if (!result.LastEvaluatedKey) break
-    exclusiveStartKey = result.LastEvaluatedKey
+  const items = await queryGsi1ByPk(adapter, listSpineGsi1pk(collection), where, req, maxItems)
+  const docs: Record<string, unknown>[] = []
+  for (const item of items) {
+    if (item['entityType'] === 'idx' || item['entityType'] === 'geo') continue
+    docs.push(stripInternalKeys(item))
   }
+  return docs
+}
 
-  return matched
+async function queryVersionLatestGsi1(
+  adapter: DynamoAdapter,
+  collection: string,
+  where: Where | undefined,
+  req?: PartialPayloadRequest,
+  maxItems?: number,
+): Promise<Record<string, unknown>[]> {
+  const pointers = await queryGsi1ByPk(
+    adapter,
+    versionLatestGsi1pk(collection),
+    where,
+    req,
+    maxItems,
+  )
+  const keys = pointers
+    .filter((p) => p['entityType'] === 'ver-latest')
+    .map((p) => ({
+      pk: String(p['targetPk']),
+      sk: String(p['targetSk']),
+    }))
+  return batchGetByKeys(adapter, keys, req)
+}
+
+async function queryVersionParentGsi1(
+  adapter: DynamoAdapter,
+  collection: string,
+  parentId: string,
+  where: Where | undefined,
+  req?: PartialPayloadRequest,
+  maxItems?: number,
+): Promise<Record<string, unknown>[]> {
+  const items = await queryGsi1ByPk(
+    adapter,
+    versionParentGsi1pk(collection, parentId),
+    where,
+    req,
+    maxItems,
+  )
+  return items.map((item) => stripInternalKeys(item))
 }
 
 async function executeGeoPlan(
   adapter: DynamoAdapter,
-  plan: Extract<import('./compileQuery.js').QueryPlan, { kind: 'geo' }>,
+  plan: Extract<QueryPlan, { kind: 'geo' }>,
   req?: PartialPayloadRequest,
+  maxItems?: number,
 ): Promise<Record<string, unknown>[]> {
   const docIds = await queryGeoDocIds(
     adapter,
@@ -173,12 +327,63 @@ async function executeGeoPlan(
   if (plan.remainder) {
     docs = docs.filter((d) => matchesWhere(d, plan.remainder))
   }
+  if (maxItems !== undefined && maxItems > 0) {
+    docs = docs.slice(0, maxItems)
+  }
   return docs
+}
+
+async function executePlan(
+  adapter: DynamoAdapter,
+  plan: QueryPlan,
+  where: undefined | Where,
+  req: PartialPayloadRequest | undefined,
+  collection: string,
+  maxItems: number | undefined,
+): Promise<Record<string, unknown>[]> {
+  switch (plan.kind) {
+    case 'geo':
+      return executeGeoPlan(adapter, plan, req, maxItems)
+    case 'inverted':
+      return queryInvertedIndex(
+        adapter,
+        collection,
+        plan.field,
+        plan.value,
+        plan.remainder,
+        req,
+        maxItems,
+      )
+    case 'inverted-in':
+      return queryInvertedIn(adapter, plan.collection, plan.field, plan.values, plan.remainder, req, maxItems)
+    case 'gsi1-list':
+      return queryGsi1List(adapter, plan.collection, plan.where ?? where, req, maxItems)
+    case 'version-latest-gsi1':
+      return queryVersionLatestGsi1(adapter, plan.collection, plan.where ?? where, req, maxItems)
+    case 'version-parent-gsi1':
+      return queryVersionParentGsi1(
+        adapter,
+        plan.collection,
+        plan.parentId,
+        plan.where ?? where,
+        req,
+        maxItems,
+      )
+    case 'partition':
+    default: {
+      const effectiveWhere = plan.where ?? where
+      if (whereHasJsOnlyOperator(effectiveWhere)) {
+        const all = await queryPartition(adapter, plan.partition, undefined, req, maxItems)
+        return all.filter((row) => matchesWhere(row, effectiveWhere))
+      }
+      return queryPartition(adapter, plan.partition, effectiveWhere, req, maxItems)
+    }
+  }
 }
 
 /**
  * Resolve matching collection documents using partition, inverted (IDX#),
- * GSI1 list spine, or geo-index queries per `compileQuery`.
+ * GSI1 list spine, geo-index, or version gsi1 queries per `compileQuery`.
  */
 export async function queryMatching(
   adapter: DynamoAdapter,
@@ -186,29 +391,13 @@ export async function queryMatching(
   where: undefined | Where,
   req?: PartialPayloadRequest,
   collection?: string,
+  maxItems?: number,
 ): Promise<Record<string, unknown>[]> {
   if (!adapter.docClient) {
     throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   const slug = collection ?? partition
-  const plan = compileQuery(adapter, slug, where)
-
-  switch (plan.kind) {
-    case 'geo':
-      return executeGeoPlan(adapter, plan, req)
-    case 'inverted':
-      return queryInvertedIndex(adapter, slug, plan.field, plan.value, plan.remainder, req)
-    case 'gsi1-list':
-      return queryGsi1List(adapter, slug, where, req)
-    case 'partition':
-    default: {
-      const effectiveWhere = plan.where ?? where
-      if (whereHasJsOnlyOperator(effectiveWhere)) {
-        const all = await queryPartition(adapter, plan.partition, undefined, req)
-        return all.filter((row) => matchesWhere(row, effectiveWhere))
-      }
-      return queryPartition(adapter, plan.partition, effectiveWhere, req)
-    }
-  }
+  const plan = compileQuery(adapter, slug, where, { partition })
+  return executePlan(adapter, plan, where, req, slug, maxItems)
 }

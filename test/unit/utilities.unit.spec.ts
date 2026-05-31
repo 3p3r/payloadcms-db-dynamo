@@ -33,6 +33,9 @@ describe('utilities', () => {
   it('whereHasJsOnlyOperator skips malformed groups', () => {
     expect(whereHasJsOnlyOperator({ and: 'x' as never, title: { equals: 'a' } })).toBe(false)
     expect(whereHasJsOnlyOperator({ title: null as never })).toBe(false)
-    expect(whereHasJsOnlyOperator({ or: [{ title: { near: [1, 2, 3] } }] })).toBe(true)
+    expect(whereHasJsOnlyOperator({ or: [{ title: { near: [1, 2, 3] } }] })).toBe(false)
+    expect(whereHasJsOnlyOperator({ and: [{ location: { near: [1, 2, 3] } }] })).toBe(false)
+    expect(whereHasJsOnlyOperator({ and: [null, { title: { like: 'x' } }] } as never)).toBe(true)
+    expect(whereHasJsOnlyOperator({ or: 'bad' as never, title: { equals: 'a' } })).toBe(false)
   })
 })

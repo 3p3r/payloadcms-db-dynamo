@@ -31,4 +31,122 @@ describe('queryCount', () => {
     )
     expect(await queryCount(mockAdapter({ send }), 'p', { id: { in: [] } })).toBe(0)
   })
+
+  it('counts via gsi1 for filtered collection list', async () => {
+    const send = vi.fn().mockResolvedValue({ Count: 3 })
+    const adapter = mockAdapter({
+      send,
+      payload: {
+        collections: {
+          posts: { config: { fields: [{ name: 'title', type: 'text' }], sanitizedIndexes: [] } },
+        },
+        config: { globals: [] },
+      } as never,
+    })
+    const total = await queryCount(adapter, 'posts', { title: { equals: 'x' } }, 'posts')
+    expect(total).toBe(3)
+    expect(send.mock.calls[0]![0].input.IndexName).toBe('gsi1')
+  })
+
+  it('uses queryMatching for inverted equals with remainder', async () => {
+    const spy = vi.spyOn(queryMatchingModule, 'queryMatching').mockResolvedValue([{}])
+    const adapter = mockAdapter({
+      payload: {
+        collections: {
+          items: {
+            config: {
+              fields: [{ name: 'email', type: 'email' }],
+              sanitizedIndexes: [{ fields: ['email'], unique: true }],
+            },
+          },
+        },
+        config: { globals: [] },
+      } as never,
+    })
+    const total = await queryCount(
+      adapter,
+      'items',
+      { email: { equals: 'a' }, score: { greater_than: 1 } },
+      'items',
+    )
+    expect(total).toBe(1)
+    expect(spy).toHaveBeenCalled()
+    vi.restoreAllMocks()
+  })
+
+  it('counts geo and inverted-in via queryMatching', async () => {
+    const spy = vi.spyOn(queryMatchingModule, 'queryMatching').mockResolvedValue([{}, {}])
+    const payload = {
+      collections: {
+        places: {
+          config: {
+            fields: [{ name: 'location', type: 'point' }],
+            sanitizedIndexes: [],
+          },
+        },
+        items: {
+          config: {
+            fields: [{ name: 'email', type: 'email' }],
+            sanitizedIndexes: [{ fields: ['email'], unique: true }],
+          },
+        },
+      },
+      config: { globals: [] },
+    } as never
+    const placesAdapter = mockAdapter({ payload })
+    expect(
+      await queryCount(placesAdapter, 'places', { location: { near: [1, 2, 1000] } }, 'places'),
+    ).toBe(2)
+    const itemsAdapter = mockAdapter({ payload })
+    expect(
+      await queryCount(itemsAdapter, 'items', { email: { in: ['a', 'b'] } }, 'items'),
+    ).toBe(2)
+    expect(spy).toHaveBeenCalled()
+    vi.restoreAllMocks()
+  })
+
+  it('counts inverted pk without remainder', async () => {
+    const send = vi.fn().mockResolvedValue({ Count: 2 })
+    const adapter = mockAdapter({
+      send,
+      payload: {
+        collections: {
+          items: {
+            config: {
+              fields: [{ name: 'email', type: 'email' }],
+              sanitizedIndexes: [{ fields: ['email'], unique: true }],
+            },
+          },
+        },
+        config: { globals: [] },
+      } as never,
+    })
+    expect(await queryCount(adapter, 'items', { email: { equals: 'a' } }, 'items')).toBe(2)
+  })
+
+  it('counts version gsi1 plans', async () => {
+    const send = vi.fn().mockResolvedValue({ Count: 1 })
+    const adapter = mockAdapter({ send })
+    expect(
+      await queryCount(adapter, 'posts_versions', { latest: { equals: true } }, 'posts'),
+    ).toBe(1)
+    expect(
+      await queryCount(adapter, 'posts_versions', { parent: { equals: 'p1' } }, 'posts'),
+    ).toBe(1)
+    expect(send.mock.calls.every((c) => c[0].input.IndexName === 'gsi1')).toBe(true)
+  })
+
+  it('counts version-latest with remainder on gsi1', async () => {
+    const send = vi.fn().mockResolvedValue({ Count: 1 })
+    const adapter = mockAdapter({ send })
+    expect(
+      await queryCount(
+        adapter,
+        'posts_versions',
+        { latest: { equals: true }, autosave: { equals: false } },
+        'posts',
+      ),
+    ).toBe(1)
+    expect(send.mock.calls[0]![0].input.FilterExpression).toBeDefined()
+  })
 })

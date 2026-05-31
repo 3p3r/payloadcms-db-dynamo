@@ -44,6 +44,21 @@ describe('geo operators', () => {
     expect(result.docs[0]?.name).toBe('SF')
   })
 
+  it('near inside and with name filter uses geo-index path', async () => {
+    const result = await handle.payload.find({
+      collection: 'places',
+      where: {
+        and: [
+          { location: { near: [-122.4194, 37.7749, 500000] } },
+          { name: { equals: 'SF' } },
+        ],
+      },
+      limit: 10,
+    })
+    expect(result.totalDocs).toBe(1)
+    expect(result.docs[0]?.name).toBe('SF')
+  })
+
   it('within matches points inside polygon', async () => {
     const result = await handle.payload.find({
       collection: 'places',

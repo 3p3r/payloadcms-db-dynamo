@@ -8,6 +8,11 @@ export const countGlobalVersions: CountGlobalVersions = async function countGlob
   this: DynamoAdapter,
   { global, where },
 ) {
-  const totalDocs = await queryCount(this, this.resolveVersionsPartition(global), where)
+  const totalDocs = await queryCount(
+    this,
+    this.resolveVersionsPartition(global),
+    where,
+    global,
+  )
   return { totalDocs }
 }

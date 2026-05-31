@@ -5,6 +5,7 @@ import { DeleteCommand } from '@aws-sdk/lib-dynamodb'
 
 import type { DynamoAdapter } from './types.js'
 
+import { projectVersionLatestPointerDelete } from './index/projectVersionIndexes.js'
 import { queryMatching } from './utilities/queryMatching.js'
 
 /**
@@ -31,13 +32,26 @@ export const deleteVersions: DeleteVersions = async function deleteVersions(
   const matched = await queryMatching(this, partition, where)
 
   await Promise.all(
-    matched.map((target) =>
-      docClient.send(
-        new DeleteCommand({
-          TableName: this.tableName,
-          Key: { pk: partition, sk: String(target['id']) },
-        }),
-      ),
-    ),
+    matched.map((target) => {
+      const deletes = [
+        docClient.send(
+          new DeleteCommand({
+            TableName: this.tableName,
+            Key: { pk: partition, sk: String(target['id']) },
+          }),
+        ),
+      ]
+      if (target['latest'] === true) {
+        deletes.push(
+          docClient.send(
+            new DeleteCommand({
+              TableName: this.tableName,
+              Key: projectVersionLatestPointerDelete(slug, String(target['id'])),
+            }),
+          ),
+        )
+      }
+      return Promise.all(deletes)
+    }),
   )
 }

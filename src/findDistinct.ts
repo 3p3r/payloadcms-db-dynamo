@@ -15,9 +15,10 @@ export const findDistinct: FindDistinct = async function findDistinct(
   this: DynamoAdapter,
   { collection, field, limit = 10, page = 1, sort, where },
 ) {
+  const partition = this.resolvePartition(collection)
   const matched = await queryMatching(
     this,
-    this.resolvePartition(collection),
+    partition,
     where,
     undefined,
     collection,

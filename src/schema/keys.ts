@@ -35,6 +35,26 @@ export function listSpineGsi1sk(sortValue: string, docId: string): string {
   return `${sortValue}#DOC#${docId}`
 }
 
+export function versionLatestGsi1pk(slug: string): string {
+  return `COL#${slug}#VER#LATEST`
+}
+
+export function versionParentGsi1pk(slug: string, parentId: string): string {
+  return `VER#${slug}#PARENT#${parentId}`
+}
+
+export function versionGsi1sk(updatedAt: string, versionId: string): string {
+  return `${updatedAt}#VER#${versionId}`
+}
+
+export function versionLatestPointerPk(slug: string): string {
+  return `COL#${slug}#VER#LATEST`
+}
+
+export function versionLatestPointerSk(versionId: string): string {
+  return `REF#${versionId}`
+}
+
 export function geoPk(slug: string, fieldPath: string, hashPrefix: string | number): string {
   return `GEO#${slug}#${fieldPath}#${hashPrefix}`
 }

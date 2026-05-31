@@ -26,6 +26,14 @@ async function queryGeohashRange(
   const docIds = new Set<string>()
   let exclusiveStartKey: Record<string, unknown> | undefined
 
+  let min = rangeMin
+  let max = rangeMax
+  if (min > max) {
+    const swap = min
+    min = max
+    max = swap
+  }
+
   while (true) {
     const result = await dynamoSend<{
       Items?: Record<string, unknown>[]
@@ -40,8 +48,8 @@ async function queryGeohashRange(
         ExpressionAttributeNames: { '#pk': 'pk', '#gh': 'geohash' },
         ExpressionAttributeValues: {
           ':pk': pk,
-          ':min': rangeMin,
-          ':max': rangeMax,
+          ':min': min,
+          ':max': max,
         },
         ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
       }),
@@ -138,10 +146,14 @@ export async function queryGeoDocIds(
   return null
 }
 
-export function extractGeoClause(
-  where: Where | undefined,
-): { field: string; operator: 'near' | 'within' | 'intersects'; clause: unknown; remainder: Where | undefined } | null {
-  if (!where) return null
+export type GeoClauseExtract = {
+  field: string
+  operator: 'near' | 'within' | 'intersects'
+  clause: unknown
+  remainder: Where | undefined
+}
+
+function extractGeoFromObject(where: Where): GeoClauseExtract | null {
   for (const [field, raw] of Object.entries(where)) {
     if (field === 'and' || field === 'or') continue
     if (!raw || typeof raw !== 'object') continue
@@ -154,5 +166,44 @@ export function extractGeoClause(
       }
     }
   }
+  return null
+}
+
+function combineRemainder(groupKey: 'and' | 'or', parts: Where[]): Where | undefined {
+  const filtered = parts.filter((p) => p && Object.keys(p).length > 0)
+  if (filtered.length === 0) return undefined
+  if (filtered.length === 1) return filtered[0]
+  return { [groupKey]: filtered }
+}
+
+export function extractGeoClause(where: Where | undefined): GeoClauseExtract | null {
+  if (!where) return null
+
+  const direct = extractGeoFromObject(where)
+  if (direct) return direct
+
+  for (const groupKey of ['and', 'or'] as const) {
+    const group = where[groupKey]
+    if (!Array.isArray(group)) continue
+
+    for (const sub of group) {
+      if (!sub || typeof sub !== 'object') continue
+      const geo = extractGeoClause(sub as Where)
+      if (!geo) continue
+
+      const parts: Where[] = []
+      if (geo.remainder) parts.push(geo.remainder)
+      for (const other of group) {
+        if (other === sub || !other || typeof other !== 'object') continue
+        parts.push(other as Where)
+      }
+      const topLevel = { ...where }
+      delete topLevel[groupKey]
+      if (Object.keys(topLevel).length > 0) parts.unshift(topLevel as Where)
+
+      return { ...geo, remainder: combineRemainder(groupKey, parts) }
+    }
+  }
+
   return null
 }

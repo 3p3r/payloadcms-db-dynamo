@@ -75,15 +75,12 @@ describe('queryMatching plans', () => {
   it('skips idx/geo rows on partition query', async () => {
     const send = vi.fn().mockResolvedValue({
       Items: [
-        { pk: 'p', sk: '1', id: '1', entityType: 'idx' },
-        { pk: 'p', sk: '2', id: '2' },
+        { pk: 'orphan', sk: '1', id: '1', entityType: 'idx' },
+        { pk: 'orphan', sk: '2', id: '2' },
       ],
     })
-    const adapter = mockAdapter({
-      send,
-      payload: { collections: { p: { config: { fields: [], sanitizedIndexes: [] } } } },
-    } as never)
-    const rows = await queryMatching(adapter, 'p', { id: { equals: '2' } }, undefined, 'p')
+    const adapter = mockAdapter({ send, payload: { collections: {}, config: { globals: [] } } as never })
+    const rows = await queryMatching(adapter, 'orphan', { id: { equals: '2' } })
     expect(rows).toHaveLength(1)
     expect(rows[0]?.id).toBe('2')
   })

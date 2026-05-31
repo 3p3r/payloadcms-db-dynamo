@@ -6,6 +6,11 @@ import { randomUUID } from 'node:crypto'
 
 import type { DynamoAdapter } from './types.js'
 
+import { applySecondaryWrites } from './index/applySecondaryWrites.js'
+import {
+  projectVersionIndexes,
+  projectVersionLatestPointerDelete,
+} from './index/projectVersionIndexes.js'
 import { dynamoSend } from './utilities/dynamoSend.js'
 import { findFirst } from './utilities/findFirst.js'
 import { normalizeForDynamo } from './utilities/normalizeForDynamo.js'
@@ -74,10 +79,21 @@ export const createVersion: CreateVersion = async function createVersion(
     ...(publishedLocale !== undefined ? { publishedLocale } : {}),
   }
 
+  const indexProjection = projectVersionIndexes({
+    collectionSlug,
+    versionsPartition: partition,
+    versionId: id,
+    parentId: String(parent),
+    updatedAt: String(updatedAt),
+    latest: true,
+    beforeLatest: false,
+  })
+
   const putItem = normalizeForDynamo({
     ...item,
     pk: partition,
     sk: id,
+    ...indexProjection.mainAttributes,
   })
 
   const transactItems: NonNullable<
@@ -85,17 +101,21 @@ export const createVersion: CreateVersion = async function createVersion(
   > = []
 
   if (previousLatest) {
+    const prevId = String(previousLatest['id'])
     transactItems.push({
       Update: {
         TableName: this.tableName,
-        Key: { pk: partition, sk: String(previousLatest['id']) },
+        Key: { pk: partition, sk: prevId },
         UpdateExpression: 'SET #latest = :false',
         ExpressionAttributeNames: { '#latest': 'latest' },
         ExpressionAttributeValues: { ':false': false },
-        // Fail the whole transaction if the previous row was deleted between
-        // our read and this transaction. Better to error and let the caller
-        // retry than to silently leave the new version with a phantom flip.
         ConditionExpression: 'attribute_exists(pk)',
+      },
+    })
+    transactItems.push({
+      Delete: {
+        TableName: this.tableName,
+        Key: projectVersionLatestPointerDelete(collectionSlug, prevId),
       },
     })
   }
@@ -108,6 +128,10 @@ export const createVersion: CreateVersion = async function createVersion(
   })
 
   await dynamoSend(this, req, new TransactWriteCommand({ TransactItems: transactItems }))
+  await applySecondaryWrites(this, req, {
+    puts: indexProjection.puts,
+    deletes: indexProjection.deletes,
+  })
 
   return returning === false ? (null as never) : (item as never)
 }

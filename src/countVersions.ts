@@ -8,6 +8,11 @@ export const countVersions: CountVersions = async function countVersions(
   this: DynamoAdapter,
   { collection, where },
 ) {
-  const totalDocs = await queryCount(this, this.resolveVersionsPartition(collection), where)
+  const totalDocs = await queryCount(
+    this,
+    this.resolveVersionsPartition(collection),
+    where,
+    collection,
+  )
   return { totalDocs }
 }

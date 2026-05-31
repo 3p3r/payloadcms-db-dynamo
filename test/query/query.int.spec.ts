@@ -29,6 +29,15 @@ afterAll(async () => {
 })
 
 describe('where operators (FilterExpression pushdown)', () => {
+  it('filtered list uses gsi1 for non-indexed equals', async () => {
+    const result = await handle.payload.find({
+      collection: 'items',
+      where: { category: { equals: 'fruit' } },
+    })
+    expect(result.totalDocs).toBe(3)
+    expect(result.docs.every((d) => d.category === 'fruit')).toBe(true)
+  })
+
   it('equals', async () => {
     const result = await handle.payload.find({
       collection: 'items',
