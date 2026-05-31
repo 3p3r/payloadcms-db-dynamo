@@ -10,10 +10,12 @@ import { queryGeoDocIds } from '../geo/queryGeo.js'
 import {
   invertedPk,
   listSpineGsi1pk,
+  searchNgramPk,
   versionLatestGsi1pk,
   versionParentGsi1pk,
   GSI1_INDEX_NAME,
 } from '../schema/keys.js'
+import { searchNgrams } from '../schema/searchIndex.js'
 import { batchGetCollectionDocs } from './batchGetDocs.js'
 import { dynamoSend } from './dynamoSend.js'
 import { buildFilterExpression } from './buildFilterExpression.js'
@@ -79,8 +81,6 @@ async function batchGetByKeys(
   req?: PartialPayloadRequest,
 ): Promise<Record<string, unknown>[]> {
   if (keys.length === 0) return []
-  const docClient = adapter.docClient
-  if (!docClient) throw adapterError(DOC_CLIENT_REQUIRED)
 
   const docs: Record<string, unknown>[] = []
   for (let i = 0; i < keys.length; i += 100) {
@@ -139,7 +139,9 @@ async function queryPartition(
       }),
     )
     for (const item of result.Items ?? []) {
-      if (item['entityType'] === 'idx' || item['entityType'] === 'geo') continue
+      if (item['entityType'] === 'idx' || item['entityType'] === 'geo' || item['entityType'] === 'ngm') {
+        continue
+      }
       matched.push(stripInternalKeys(item))
       if (shouldStop(matched, maxItems)) return matched
     }
@@ -255,7 +257,9 @@ async function queryGsi1List(
   const items = await queryGsi1ByPk(adapter, listSpineGsi1pk(collection), where, req, maxItems)
   const docs: Record<string, unknown>[] = []
   for (const item of items) {
-    if (item['entityType'] === 'idx' || item['entityType'] === 'geo') continue
+    if (item['entityType'] === 'idx' || item['entityType'] === 'geo' || item['entityType'] === 'ngm') {
+      continue
+    }
     docs.push(stripInternalKeys(item))
   }
   return docs
@@ -300,6 +304,94 @@ async function queryVersionParentGsi1(
     maxItems,
   )
   return items.map((item) => stripInternalKeys(item))
+}
+
+async function querySearchNgramPartition(
+  adapter: DynamoAdapter,
+  pk: string,
+  req?: PartialPayloadRequest,
+): Promise<Set<string>> {
+  const ids = new Set<string>()
+  let exclusiveStartKey: Record<string, unknown> | undefined
+
+  while (true) {
+    const result = await dynamoSend<{
+      Items?: Record<string, unknown>[]
+      LastEvaluatedKey?: Record<string, unknown>
+    }>(
+      adapter,
+      req,
+      new QueryCommand({
+        TableName: adapter.tableName,
+        KeyConditionExpression: '#pk = :pk',
+        ExpressionAttributeNames: { '#pk': 'pk' },
+        ExpressionAttributeValues: { ':pk': pk },
+        ConsistentRead: true,
+        ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+      }),
+    )
+    for (const item of result.Items ?? []) {
+      const docId = item['docId'] ?? item['sk']
+      if (docId) ids.add(String(docId))
+    }
+    if (!result.LastEvaluatedKey) break
+    exclusiveStartKey = result.LastEvaluatedKey
+  }
+
+  return ids
+}
+
+async function intersectSearchGrams(
+  adapter: DynamoAdapter,
+  collection: string,
+  field: string,
+  grams: string[],
+  req?: PartialPayloadRequest,
+): Promise<Set<string>> {
+  let ids: Set<string> | undefined
+  for (const gram of grams) {
+    const gramIds = await querySearchNgramPartition(
+      adapter,
+      searchNgramPk(collection, field, gram),
+      req,
+    )
+    if (ids === undefined) {
+      ids = gramIds
+    } else {
+      const next = new Set<string>()
+      for (const id of ids) {
+        if (gramIds.has(id)) next.add(id)
+      }
+      ids = next
+    }
+    if (ids.size === 0) break
+  }
+  return ids!
+}
+
+async function querySearchNgram(
+  adapter: DynamoAdapter,
+  plan: Extract<QueryPlan, { kind: 'search-ngram' }>,
+  where: Where | undefined,
+  req?: PartialPayloadRequest,
+  maxItems?: number,
+): Promise<Record<string, unknown>[]> {
+  const grams = searchNgrams(plan.searchText)
+  const docIds = new Set<string>()
+  for (const field of plan.fields) {
+    for (const id of await intersectSearchGrams(adapter, plan.collection, field, grams, req)) {
+      docIds.add(id)
+    }
+  }
+
+  let docs = await batchGetCollectionDocs(adapter, plan.collection, [...docIds], req)
+  if (where) {
+    docs = docs.filter((row) => matchesWhere(row, where))
+  }
+  if (maxItems !== undefined && maxItems > 0) {
+    docs = docs.slice(0, maxItems)
+  }
+  return docs
 }
 
 async function executeGeoPlan(
@@ -356,6 +448,8 @@ async function executePlan(
       )
     case 'inverted-in':
       return queryInvertedIn(adapter, plan.collection, plan.field, plan.values, plan.remainder, req, maxItems)
+    case 'search-ngram':
+      return querySearchNgram(adapter, plan, where, req, maxItems)
     case 'gsi1-list':
       return queryGsi1List(adapter, plan.collection, plan.where ?? where, req, maxItems)
     case 'version-latest-gsi1':

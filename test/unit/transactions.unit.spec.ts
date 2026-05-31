@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb'
+
+import { deleteMany } from '../../src/deleteMany.js'
 import { beginTransaction } from '../../src/transactions/beginTransaction.js'
 import { commitTransaction } from '../../src/transactions/commitTransaction.js'
 import { rollbackTransaction } from '../../src/transactions/rollbackTransaction.js'
+import * as queryMatchingModule from '../../src/utilities/queryMatching.js'
 import { mockAdapter } from '../__helpers/mockAdapter.js'
 
 function adapterWithSessions() {
@@ -97,5 +101,54 @@ describe('transactions', () => {
     adapter.transactionSessions = { existing: {} as never }
     await beginTransaction.call(adapter)
     expect(adapter.transactionSessions).toBeDefined()
+  })
+
+  it('deleteMany buffers deletes in transaction session', async () => {
+    const adapter = adapterWithSessions()
+    adapter.payload = {
+      collections: {
+        posts: {
+          config: {
+            fields: [{ name: 'title', type: 'text' }],
+            sanitizedIndexes: [{ fields: ['title'], unique: true }],
+          },
+        },
+      },
+      config: { globals: [] },
+      logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+    } as never
+
+    const txId = await beginTransaction.call(adapter)
+    vi.spyOn(queryMatchingModule, 'queryMatching').mockResolvedValue([
+      { id: '1', title: 'a', createdAt: '2025-01-01' },
+      { id: '2', title: 'b', createdAt: '2025-01-01' },
+    ])
+
+    await deleteMany.call(adapter, {
+      collection: 'posts',
+      where: {},
+      req: { transactionID: txId } as never,
+    })
+
+    const session = adapter.transactionSessions?.[String(txId)]
+    expect(session?.transactItems.length).toBeGreaterThan(0)
+    expect(session?.transactItems.every((item) => item.Delete)).toBe(true)
+    vi.restoreAllMocks()
+  })
+
+  it('deleteMany commit chunks transact when more than 100 delete keys', async () => {
+    const adapter = adapterWithSessions()
+    adapter.bulkOperationsSingleTransaction = true
+    const send = vi.fn().mockResolvedValue({})
+    adapter.docClient = { send } as never
+
+    const docs = Array.from({ length: 101 }, (_, i) => ({ id: String(i + 1), title: `t${i}` }))
+    vi.spyOn(queryMatchingModule, 'queryMatching').mockResolvedValue(docs)
+
+    await deleteMany.call(adapter, { collection: 'items', where: {} })
+
+    const transactCalls = send.mock.calls.filter(([cmd]) => cmd instanceof TransactWriteCommand)
+    expect(transactCalls.length).toBe(2)
+    vi.restoreAllMocks()
   })
 })

@@ -27,6 +27,14 @@ export function invertedSk(docId: string): string {
   return String(docId)
 }
 
+export function searchNgramPk(slug: string, fieldPath: string, gram: string): string {
+  return `NGM#${slug}#${fieldPath}#${gram}`
+}
+
+export function searchNgramSk(docId: string): string {
+  return String(docId)
+}
+
 export function listSpineGsi1pk(slug: string): string {
   return `COL#${slug}#LIST`
 }

@@ -138,7 +138,9 @@ async function scrubPartition(
     )
 
     for (const item of result.Items ?? []) {
-      if (item['entityType'] === 'idx' || item['entityType'] === 'geo') continue
+      if (item['entityType'] === 'idx' || item['entityType'] === 'geo' || item['entityType'] === 'ngm') {
+        continue
+      }
       scanned++
       const sansInternal = stripInternalKeys(item)
       const projected = project(sansInternal)

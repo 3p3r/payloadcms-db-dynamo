@@ -2,8 +2,10 @@ import type { Where } from 'payload'
 
 import { extractGeoClause } from '../geo/queryGeo.js'
 import { collectDeclaredIndexPaths } from '../schema/collectFields.js'
+import { collectSearchIndexPaths } from '../schema/searchIndex.js'
 import type { DynamoAdapter } from '../types.js'
 import { buildFilterExpression } from './buildFilterExpression.js'
+import { extractSearchLikeWhere } from './extractSearchWhere.js'
 import { whereHasJsOnlyOperator } from './operators.js'
 
 export type QueryPlan =
@@ -50,6 +52,14 @@ export type QueryPlan =
       collection: string
       parentId: string
       where?: Where
+    }
+  | {
+      kind: 'search-ngram'
+      collection: string
+      searchText: string
+      operator: 'contains' | 'like' | 'not_like'
+      fields: string[]
+      remainder?: Where
     }
 
 export function extractIndexedEquals(
@@ -157,11 +167,7 @@ export function compileQuery(
   where: Where | undefined,
   options?: { partition?: string },
 ): QueryPlan {
-  const partition =
-    options?.partition ??
-    (typeof adapter.resolvePartition === 'function'
-      ? adapter.resolvePartition(collection)
-      : collection)
+  const partition = options?.partition ?? adapter.resolvePartition(collection)
 
   const versionSlug = collectionSlugFromVersionsPartition(partition)
   if (versionSlug) {
@@ -223,6 +229,19 @@ export function compileQuery(
       field: indexed.field,
       value: indexed.value,
       ...(indexed.remainder ? { remainder: indexed.remainder } : {}),
+    }
+  }
+
+  const searchPaths = config ? collectSearchIndexPaths(config) : []
+  const searchLike = extractSearchLikeWhere(where, searchPaths)
+  if (searchLike && canPushFilter(searchLike.remainder)) {
+    return {
+      kind: 'search-ngram',
+      collection,
+      searchText: searchLike.searchText,
+      operator: searchLike.operator,
+      fields: searchLike.fields,
+      ...(searchLike.remainder ? { remainder: searchLike.remainder } : {}),
     }
   }
 

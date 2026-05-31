@@ -141,6 +141,34 @@ describe('dynamoSend — transaction overlay', () => {
     expect(send).toHaveBeenCalled()
   })
 
+  it('buffers UpdateCommand without prior overlay and optional expressions', async () => {
+    const session: DynamoTransactionSession = {
+      id: 'tx1',
+      deleted: new Set(),
+      overlay: new Map(),
+      transactItems: [],
+    }
+    const adapter = {
+      docClient: { send: vi.fn() },
+      transactionSessions: { tx1: session },
+      tableName: 't',
+    } as unknown as DynamoAdapter
+    await dynamoSend(
+      adapter,
+      { transactionID: 'tx1' },
+      new UpdateCommand({
+        TableName: 't',
+        Key: { pk: 'p', sk: '9' },
+        UpdateExpression: 'SET title = :t',
+        ExpressionAttributeNames: { '#t': 'title' },
+        ExpressionAttributeValues: { ':t': 'fresh' },
+        ConditionExpression: 'attribute_exists(pk)',
+      }),
+    )
+    expect(session.transactItems[0]?.Update?.ExpressionAttributeNames).toEqual({ '#t': 'title' })
+    expect(session.transactItems[0]?.Update?.ConditionExpression).toBe('attribute_exists(pk)')
+  })
+
   it('buffers UpdateCommand in a transaction', async () => {
     const session = {
       id: 'tx1',

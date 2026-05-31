@@ -142,7 +142,7 @@ describe('adapter write paths', () => {
     vi.spyOn(findFirstModule, 'findFirst').mockResolvedValue(null)
     expect(
       await createVersion.call(writeAdapter(vi.fn().mockResolvedValue({})), {
-        collection: 'posts',
+        collectionSlug: 'posts',
         parent: 'p1',
         versionData: { title: 'v' },
         createdAt: 't',

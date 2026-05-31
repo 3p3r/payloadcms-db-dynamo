@@ -47,7 +47,7 @@ export default buildConfig({
 | `client` | Inject an existing `DynamoDBClient` (adapter will not destroy it). |
 | `ensureTables` | When `true`, create the table and GSIs during `init` if missing. |
 | `migrationDir` | Directory for migration files (default `migrations`). |
-| `bulkOperationsSingleTransaction` | Buffer bulk writes into one transaction per request when possible. |
+| `bulkOperationsSingleTransaction` | When `true`, `updateMany` / `deleteMany` run inside one `TransactWriteItems` commit per request (if `req` has no transaction yet). DynamoDB caps each transact at **100 items** and **4 MB**; larger bulks are split across multiple transact calls on commit. |
 
 ## Table schema
 
@@ -69,7 +69,7 @@ Works with Payload’s migration commands (`migrate`, `migrate:status`, `migrate
 
 ## Transactions
 
-Supports Payload request transactions via buffered `TransactWriteItems` (`beginTransaction` / `commitTransaction` / `rollbackTransaction`).
+Supports Payload request transactions via buffered `TransactWriteItems` (`beginTransaction` / `commitTransaction` / `rollbackTransaction`). Commits automatically chunk when a session exceeds 100 write items.
 
 ## Query & data behavior
 

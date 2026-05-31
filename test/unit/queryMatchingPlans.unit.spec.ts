@@ -114,6 +114,152 @@ describe('queryMatching plans', () => {
     expect(rows[0]?.id).toBe('2')
   })
 
+  it('queries search-ngram partitions, intersects grams, and hydrates', async () => {
+    const searchPayload = {
+      collections: {
+        articles: {
+          config: {
+            fields: [{ name: 'title', type: 'text' }],
+            admin: { listSearchableFields: ['title'] },
+          },
+        },
+      },
+      config: { globals: [] },
+    } as never
+
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Items: [{ docId: '1', sk: '1' }] })
+      .mockResolvedValueOnce({ Items: [{ docId: '1', sk: '1' }] })
+      .mockResolvedValueOnce({ Items: [{ docId: '1', sk: '1' }] })
+      .mockResolvedValue({
+        Responses: { t: [{ pk: 'articles', sk: '1', id: '1', title: 'robot' }] },
+      })
+    const adapter = mockAdapter({ send, tableName: 't', payload: searchPayload })
+    const rows = await queryMatching(
+      adapter,
+      'articles',
+      { title: { like: 'robot' } },
+      undefined,
+      'articles',
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.title).toBe('robot')
+    expect(String(send.mock.calls[0]?.[0].input.ExpressionAttributeValues?.[':pk'])).toContain(
+      'NGM#',
+    )
+  })
+
+  it('search-ngram returns empty when gram intersection is empty', async () => {
+    const searchPayload = {
+      collections: {
+        articles: {
+          config: {
+            fields: [{ name: 'title', type: 'text' }],
+            admin: { listSearchableFields: ['title'] },
+          },
+        },
+      },
+      config: { globals: [] },
+    } as never
+
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Items: [{ docId: '1', sk: '1' }] })
+      .mockResolvedValueOnce({ Items: [] })
+    const adapter = mockAdapter({ send, tableName: 't', payload: searchPayload })
+    const rows = await queryMatching(
+      adapter,
+      'articles',
+      { title: { like: 'robot' } },
+      undefined,
+      'articles',
+    )
+    expect(rows).toEqual([])
+  })
+
+  it('search-ngram paginates gram partition queries', async () => {
+    const searchPayload = {
+      collections: {
+        articles: {
+          config: {
+            fields: [{ name: 'title', type: 'text' }],
+            admin: { listSearchableFields: ['title'] },
+          },
+        },
+      },
+      config: { globals: [] },
+    } as never
+
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [{ docId: '1', sk: '1' }],
+        LastEvaluatedKey: { pk: 'NGM#articles#title#rob', sk: 'x' },
+      })
+      .mockResolvedValueOnce({ Items: [{ docId: '2', sk: '2' }] })
+      .mockResolvedValue({
+        Responses: {
+          t: [
+            { pk: 'articles', sk: '1', id: '1', title: 'robot' },
+            { pk: 'articles', sk: '2', id: '2', title: 'robotic' },
+          ],
+        },
+      })
+    const adapter = mockAdapter({ send, tableName: 't', payload: searchPayload })
+    const rows = await queryMatching(
+      adapter,
+      'articles',
+      { title: { like: 'rob' } },
+      undefined,
+      'articles',
+      1,
+    )
+    expect(rows).toHaveLength(1)
+  })
+
+  it('search-ngram applies full where including remainder fields', async () => {
+    const searchPayload = {
+      collections: {
+        articles: {
+          config: {
+            fields: [
+              { name: 'title', type: 'text' },
+              { name: 'active', type: 'checkbox' },
+            ],
+            admin: { listSearchableFields: ['title'] },
+          },
+        },
+      },
+      config: { globals: [] },
+    } as never
+
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Items: [{ docId: '1', sk: '1' }, { docId: '2', sk: '2' }] })
+      .mockResolvedValue({
+        Responses: {
+          t: [
+            { pk: 'articles', sk: '1', id: '1', title: 'robot', active: true },
+            { pk: 'articles', sk: '2', id: '2', title: 'robot', active: false },
+          ],
+        },
+      })
+    const adapter = mockAdapter({ send, tableName: 't', payload: searchPayload })
+    const rows = await queryMatching(
+      adapter,
+      'articles',
+      {
+        or: [{ title: { like: 'rob' } }],
+        active: { equals: true },
+      },
+      undefined,
+      'articles',
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.id).toBe('1')
+  })
+
   it('queries inverted partition for indexed equals', async () => {
     const send = vi
       .fn()

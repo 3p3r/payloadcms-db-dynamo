@@ -8,6 +8,7 @@ import type { DynamoAdapter } from './types.js'
 
 import { buildCreateTableInput, ENTITY_KEY_TEMPLATES, TABLE_KEY_ATTRS } from './schema/tableDefinition.js'
 import { collectPointFields, collectIndexPaths } from './schema/collectFields.js'
+import { collectSearchIndexPaths } from './schema/searchIndex.js'
 
 export const generateSchema: GenerateSchema = async function generateSchema(
   this: DynamoAdapter,
@@ -19,6 +20,7 @@ export const generateSchema: GenerateSchema = async function generateSchema(
   const collections = Object.values(this.payload.collections).map((c) => ({
     slug: c.config.slug,
     indexes: collectIndexPaths(c.config),
+    searchIndexFields: collectSearchIndexPaths(c.config),
     pointFields: collectPointFields(c.config.fields),
     versions: Boolean(c.config.versions),
     drafts: Boolean(c.config.versions?.drafts),

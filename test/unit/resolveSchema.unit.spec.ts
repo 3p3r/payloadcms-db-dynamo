@@ -28,12 +28,10 @@ describe('resolveSchema projection', () => {
   const adapter = mockAdapter({ payload: schemaPayload })
 
   it('projects collection, global, and version rows', () => {
-    expect(projectForCollection(adapter, 'missing', { x: 1 })).toEqual({ x: 1 })
     expect(projectForCollection(adapter, 'posts', { title: 't', extra: 'drop' }).title).toBe('t')
     expect(projectForCollection(adapter, 'posts', { title: 't', extra: 'drop' }).extra).toBeUndefined()
 
     expect(projectForGlobal(adapter, 'site', { name: 'n', leak: true }).name).toBe('n')
-    expect(projectForGlobal(adapter, 'missing', { x: 1 })).toEqual({ x: 1 })
 
     expect(
       projectVersionRow(adapter, { kind: 'global', slug: 'site' }, {
@@ -53,18 +51,22 @@ describe('resolveSchema projection', () => {
     expect(
       projectVersionSnapshot(adapter, { kind: 'collection', slug: 'posts' }, { title: 's' }),
     ).toEqual({ title: 's' })
+  })
 
-    expect(
-      projectVersionRow(adapter, { kind: 'collection', slug: 'missing' }, { id: '1', extra: true }),
-    ).toEqual({ id: '1', extra: true })
+  it('throws for unknown collection, global, or version parent slugs', () => {
+    expect(() => projectForCollection(adapter, 'missing', { x: 1 })).toThrow(/unknown collection/)
+    expect(() => projectForGlobal(adapter, 'missing', { x: 1 })).toThrow(/unknown global/)
+    expect(() =>
+      projectVersionRow(adapter, { kind: 'collection', slug: 'missing' }, { id: '1' }),
+    ).toThrow(/unknown collection/)
+    expect(() =>
+      projectVersionSnapshot(adapter, { kind: 'global', slug: 'ghost' }, { x: 1 }),
+    ).toThrow(/unknown global/)
   })
 
   it('returns null field lists for unknown slugs and malformed globals config', () => {
     expect(getCollectionFields(adapter, 'missing')).toBeNull()
     const badGlobals = mockAdapter({ payload: { config: { globals: 'not-array' as never } } })
     expect(getGlobalFields(badGlobals, 'site')).toBeNull()
-    expect(projectVersionSnapshot(badGlobals, { kind: 'global', slug: 'ghost' }, { x: 1 })).toEqual({
-      x: 1,
-    })
   })
 })

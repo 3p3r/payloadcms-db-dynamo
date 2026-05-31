@@ -1,19 +1,9 @@
 import type { Field } from 'payload'
 
+import { adapterError } from '../packageMeta.js'
 import type { DynamoAdapter } from '../types.js'
 
 import { pickConfiguredFields, pickConfiguredVersionRow } from './pickConfiguredFields.js'
-
-/**
- * Look up the sanitized `fields` array for a collection or global. Lives in
- * one place so the write-path projection (see `pickConfiguredFields`) doesn't
- * have to learn Payload's collection/global storage layout per call site.
- *
- * Returns `null` (rather than throwing) when a slug is unrecognized — a
- * caller using an out-of-config slug is a programmer error elsewhere, but
- * the right blast radius for that here is "skip projection," not "kill the
- * write."
- */
 
 export function getCollectionFields(adapter: DynamoAdapter, slug: string): Field[] | null {
   const config = adapter.payload?.collections?.[slug]?.config
@@ -56,17 +46,15 @@ export const VERSION_ROW_RESERVED_KEYS = [
   'publishedLocale',
 ] as const
 
-/**
- * Strip a row against its collection's `fields`, falling back to a no-op
- * if the slug isn't recognized (defensive — see `getCollectionFields`).
- */
 export function projectForCollection(
   adapter: DynamoAdapter,
   slug: string,
   data: Record<string, unknown>,
 ): Record<string, unknown> {
   const fields = getCollectionFields(adapter, slug)
-  if (!fields) return data
+  if (!fields) {
+    throw adapterError(`unknown collection \`${slug}\``)
+  }
   return pickConfiguredFields(data, fields, ROW_RESERVED_KEYS)
 }
 
@@ -76,7 +64,9 @@ export function projectForGlobal(
   data: Record<string, unknown>,
 ): Record<string, unknown> {
   const fields = getGlobalFields(adapter, slug)
-  if (!fields) return data
+  if (!fields) {
+    throw adapterError(`unknown global \`${slug}\``)
+  }
   return pickConfiguredFields(data, fields, ROW_RESERVED_KEYS)
 }
 
@@ -95,14 +85,12 @@ export function projectVersionSnapshot(
     parent.kind === 'collection'
       ? getCollectionFields(adapter, parent.slug)
       : getGlobalFields(adapter, parent.slug)
-  if (!fields) return data
+  if (!fields) {
+    throw adapterError(`unknown ${parent.kind} \`${parent.slug}\``)
+  }
   return pickConfiguredFields(data, fields, ROW_RESERVED_KEYS)
 }
 
-/**
- * Strip a fully-merged version row (top-level metadata + nested `version`
- * snapshot) against the parent collection or global's fields.
- */
 export function projectVersionRow(
   adapter: DynamoAdapter,
   parent: { kind: 'collection' | 'global'; slug: string },
@@ -112,6 +100,8 @@ export function projectVersionRow(
     parent.kind === 'collection'
       ? getCollectionFields(adapter, parent.slug)
       : getGlobalFields(adapter, parent.slug)
-  if (!fields) return row
+  if (!fields) {
+    throw adapterError(`unknown ${parent.kind} \`${parent.slug}\``)
+  }
   return pickConfiguredVersionRow(row, fields)
 }

@@ -18,6 +18,7 @@ import {
 import type { DynamoAdapter } from '../types.js'
 import { getCollectionFields } from '../utilities/resolveSchema.js'
 import { getNestedValue } from '../utilities/getNestedValue.js'
+import { projectSearchIndex } from './projectSearchIndex.js'
 
 export type IndexKey = { pk: string; sk: string }
 
@@ -111,6 +112,10 @@ export function projectCollectionIndexes(
       mainAttributes[`${path}_geohash`] = geohash
     }
   }
+
+  const search = projectSearchIndex(adapter, collection, doc, before)
+  puts.push(...search.puts)
+  deletes.push(...search.deletes)
 
   return { mainAttributes, puts, deletes }
 }

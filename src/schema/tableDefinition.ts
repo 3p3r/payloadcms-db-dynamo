@@ -76,4 +76,5 @@ export const ENTITY_KEY_TEMPLATES = {
   versionLatest: 'gsi1pk=COL#{slug}#VER#LATEST (pointer row), gsi1sk={updatedAt}#VER#{versionId}',
   versionParent: 'gsi1pk=VER#{slug}#PARENT#{parentId}, gsi1sk={updatedAt}#VER#{versionId}',
   geoCell: 'pk=GEO#{slug}#{field}#{hashPrefix}, geohash={geohash}, sk=DOC#{id}',
+  searchNgram: 'pk=NGM#{slug}#{path}#{gram}, sk={id}',
 } as const
