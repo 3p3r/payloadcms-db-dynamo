@@ -1,0 +1,51 @@
+{
+  "name": "payload-kitchen-sink-4",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Payload 4.x kitchen sink example using payloadcms-db-dynamo",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "setup": "npm-run-all setup:env setup:install setup:adapter setup:docker",
+    "setup:env": "cp --update=none .env.example .env",
+    "setup:install": "npm install --no-audit --no-fund",
+    "setup:adapter": "npm run build --prefix ../..",
+    "setup:docker": "npm run docker:start --prefix ../..",
+    "stop": "fuser -k 3001/tcp",
+    "prebuild": "npm run setup:adapter",
+    "predev": "npm run setup",
+    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
+    "dev": "cross-env PORT=3001 NODE_OPTIONS=--no-deprecation next dev --webpack",
+    "generate:importmap": "cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap",
+    "generate:types": "cross-env NODE_OPTIONS=--no-deprecation payload generate:types",
+    "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
+    "seed": "cross-env NODE_OPTIONS=--no-deprecation tsx src/seed.ts",
+    "sync:shared": "cp ../shared/kitchenSink.ts src/kitchenSink.ts && cp ../shared/seed.ts src/seedKitchenSink.ts",
+    "start": "cross-env NODE_OPTIONS=--no-deprecation next start"
+  },
+  "dependencies": {
+    "@payloadcms/next": "4.0.0-internal.e16cf59",
+    "@payloadcms/richtext-lexical": "4.0.0-internal.e16cf59",
+    "@payloadcms/ui": "4.0.0-internal.e16cf59",
+    "cross-env": "^7.0.3",
+    "dotenv": "16.4.7",
+    "graphql": "^16.8.1",
+    "next": "16.2.6",
+    "payload": "4.0.0-internal.e16cf59",
+    "payloadcms-db-dynamo": "file:../..",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "sharp": "0.34.2"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "@types/node": "^22.15.0",
+    "@types/react": "19.1.8",
+    "@types/react-dom": "19.1.6",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

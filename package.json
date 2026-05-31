@@ -22,7 +22,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "esbuild src/**/*.ts --outdir=dist --outbase=src --bundle=false --platform=node --format=esm --target=node20 --sourcemap --log-level=info && tsc --emitDeclarationOnly",
+    "build": "npm-run-all build:*",
+    "build:source": "esbuild 'src/**/*.ts' 'src/*.ts' --outdir=dist --outbase=src --bundle=false --platform=node --format=esm --target=node20 --sourcemap --log-level=info",
+    "build:types": "tsc --emitDeclarationOnly",
     "prepublishOnly": "npm run build",
     "docker:start": "docker compose up -d dynamodb-local",
     "docker:stop": "docker compose down",
@@ -32,7 +34,12 @@
     "test:unit:coverage": "vitest run --config vitest.unit.config.ts --coverage",
     "test:watch": "vitest",
     "test:integration": "vitest run test/**/*.int.spec.ts",
-    "typecheck:test": "tsc -p test/tsconfig.json"
+    "typecheck:test": "tsc -p test/tsconfig.json",
+    "example:3x": "npm run dev --prefix examples/payload-3.x",
+    "example:4x": "npm run dev --prefix examples/payload-4.x",
+    "examples": "npm-run-all --continue-on-error examples:stop examples:dev",
+    "examples:dev": "npm-run-all -p example:3x example:4x",
+    "examples:stop": "fuser -k 3000/tcp 3001/tcp"
   },
   "keywords": [
     "payload",
@@ -78,6 +85,7 @@
     "@types/rc": "^1.2.4",
     "@vitest/coverage-v8": "^3.0.0",
     "esbuild": "^0.25.0",
+    "npm-run-all": "^4.1.5",
     "payload": "^3.84.1",
     "typescript": "^5.8.3",
     "vitest": "^3.0.0"

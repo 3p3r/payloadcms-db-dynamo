@@ -7,6 +7,10 @@ DynamoDB database adapter for [Payload CMS](https://payloadcms.com). Stores coll
 - [Payload](https://payloadcms.com) `>=3.49.0 <5.0.0`
 - Node.js 20+
 
+## Examples
+
+Kitchen-sink Payload **3.x** and **4.x** apps that use this adapter with the repo-root DynamoDB Local compose file: [examples/README.md](./examples/README.md).
+
 ## Install
 
 ```bash

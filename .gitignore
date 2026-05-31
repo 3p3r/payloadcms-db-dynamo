@@ -36,3 +36,9 @@ src/payload-generated-dynamodb.json
 
 # Optional local overrides
 .cache/
+
+# Examples (keep screenshots and .env.example)
+examples/**/node_modules/
+examples/**/.next/
+examples/**/.env
+!examples/**/.env.example

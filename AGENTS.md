@@ -35,9 +35,14 @@ Test env:
 | `PAYLOAD_DDB_TEST_HOST` | `localhost` |
 | `PAYLOAD_DDB_TEST_PORT` | `8000` |
 
+## Examples
+
+Runnable kitchen-sink Payload apps: [examples/README.md](./examples/README.md) (`payload-3.x` on port 3000 / table `payload-kitchen-sink-3`, `payload-4.x` on 3001 / `payload-kitchen-sink-4`). Start DynamoDB with `npm run docker:start` at the repo root only — examples do not ship their own compose file.
+
 ## Layout
 
 ```
+examples/            # payload-3.x, payload-4.x, shared kitchenSink schema
 src/                 # adapter implementation
   index.ts           # dynamoAdapter factory + exports
   config.ts          # rc defaults + resolveAdapterConfig (operational tunables)
