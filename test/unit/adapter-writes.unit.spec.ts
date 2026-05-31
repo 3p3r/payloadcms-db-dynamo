@@ -11,6 +11,27 @@ import * as findFirstModule from '../../src/utilities/findFirst.js'
 import { writeAdapter } from '../__helpers/mockAdapter.js'
 
 describe('adapter write paths', () => {
+  it('upsert updates when a row exists', async () => {
+    vi.spyOn(findFirstModule, 'findFirst').mockResolvedValue({
+      id: '1',
+      title: 'old',
+      updatedAt: 't1',
+    })
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Item: { pk: 'posts', sk: '1', id: '1', title: 'old', updatedAt: 't1' } })
+      .mockResolvedValue({})
+    const adapter = writeAdapter(send)
+    const result = await upsert.call(adapter, {
+      collection: 'posts',
+      data: { title: 'new' },
+      where: { id: { equals: '1' } },
+      req: {} as never,
+    })
+    expect(result?.title).toBe('new')
+    vi.restoreAllMocks()
+  })
+
   it('create and upsert honor returning:false', async () => {
     const adapter = writeAdapter()
     expect(
@@ -25,6 +46,18 @@ describe('adapter write paths', () => {
         returning: false,
       }),
     ).toBeNull()
+    vi.restoreAllMocks()
+  })
+
+  it('upsert creates when missing without req', async () => {
+    vi.spyOn(findFirstModule, 'findFirst').mockResolvedValue(null)
+    const adapter = writeAdapter(vi.fn().mockResolvedValue({}))
+    const created = await upsert.call(adapter, {
+      collection: 'posts',
+      data: { title: 'new' },
+      where: { title: { equals: 'new' } },
+    })
+    expect(created?.title).toBe('new')
     vi.restoreAllMocks()
   })
 

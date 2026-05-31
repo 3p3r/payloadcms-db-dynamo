@@ -40,6 +40,14 @@ describe('matchesWhere', () => {
     ).toBe(false)
   })
 
+  it('fails and when any branch fails', () => {
+    expect(
+      matchesWhere(item, {
+        and: [{ title: { equals: 'Hello' } }, { count: { equals: 99 } }],
+      }),
+    ).toBe(false)
+  })
+
   it('matches and / or', () => {
     expect(
       matchesWhere(item, {

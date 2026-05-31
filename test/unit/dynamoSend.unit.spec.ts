@@ -4,6 +4,7 @@ import {
   PutCommand,
   QueryCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -138,6 +139,32 @@ describe('dynamoSend — transaction overlay', () => {
     )
     expect(got.Item?.title).toBe('remote')
     expect(send).toHaveBeenCalled()
+  })
+
+  it('buffers UpdateCommand in a transaction', async () => {
+    const session = {
+      id: 'tx1',
+      deleted: new Set(),
+      overlay: new Map([['p\x001', { pk: 'p', sk: '1', title: 'old' }]]),
+      transactItems: [],
+    }
+    const adapter = {
+      docClient: { send: vi.fn() },
+      transactionSessions: { tx1: session },
+      tableName: 't',
+    } as unknown as DynamoAdapter
+    await dynamoSend(
+      adapter,
+      { transactionID: 'tx1' },
+      new UpdateCommand({
+        TableName: 't',
+        Key: { pk: 'p', sk: '1' },
+        UpdateExpression: 'SET title = :t',
+        ExpressionAttributeValues: { ':t': 'new' },
+      }),
+    )
+    expect(session.transactItems).toHaveLength(1)
+    expect(session.transactItems[0]?.Update?.UpdateExpression).toContain('SET title')
   })
 
   it('passes through when no session is active', async () => {

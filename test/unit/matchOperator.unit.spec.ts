@@ -57,6 +57,7 @@ describe('matchOperator', () => {
       false,
     )
     expect(matchOperator([0, 0], 'near', [0, 0, 1, 100])).toBe(false)
+    expect(matchOperator([0, 0], 'near', [0, 0, 100, 50])).toBe(false)
     expect(matchOperator(null, 'within', null)).toBe(false)
     expect(matchOperator('not-a-point', 'within', { coordinates: [[[0, 0], [1, 0], [0, 1], [0, 0]]] })).toBe(
       false,

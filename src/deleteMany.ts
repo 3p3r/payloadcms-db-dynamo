@@ -1,41 +1,30 @@
 import type { DeleteMany } from 'payload'
 import { adapterError, DOC_CLIENT_REQUIRED } from './packageMeta.js'
 
-import { DeleteCommand } from '@aws-sdk/lib-dynamodb'
-
 import type { DynamoAdapter } from './types.js'
 
+import { deleteOne } from './deleteOne.js'
 import { queryMatching } from './utilities/queryMatching.js'
 
-/**
- * v1 strategy: query-and-collect matches, then delete each by composite key
- * in parallel.
- *
- * `BatchWriteItem` could halve the request count (25 deletes per call) but
- * has partial-failure semantics that need retry logic — out of scope until
- * we wire up retries. Sequential parallel `DeleteCommand`s are simple and
- * correct.
- */
 export const deleteMany: DeleteMany = async function deleteMany(
   this: DynamoAdapter,
   { collection, where, req },
 ) {
-  const docClient = this.docClient
-  if (!docClient) {
+  if (!this.docClient) {
     throw adapterError(DOC_CLIENT_REQUIRED)
   }
 
   const partition = this.resolvePartition(collection)
-  const matched = await queryMatching(this, partition, where, req)
+  const matched = await queryMatching(this, partition, where, req, collection)
 
   await Promise.all(
     matched.map((target) =>
-      docClient.send(
-        new DeleteCommand({
-          TableName: this.tableName,
-          Key: { pk: partition, sk: String(target['id']) },
-        }),
-      ),
+      deleteOne.call(this, {
+        collection,
+        where: { id: { equals: target['id'] } },
+        returning: false,
+        ...(req ? { req } : {}),
+      }),
     ),
   )
 }

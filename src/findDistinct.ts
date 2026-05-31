@@ -21,7 +21,13 @@ export const findDistinct: FindDistinct = async function findDistinct(
   this: DynamoAdapter,
   { collection, field, limit = 10, page = 1, sort, where },
 ) {
-  const matched = await queryMatching(this, this.resolvePartition(collection), where)
+  const matched = await queryMatching(
+    this,
+    this.resolvePartition(collection),
+    where,
+    undefined,
+    collection,
+  )
 
   const seen = new Set<unknown>()
   const values: Record<string, unknown>[] = []

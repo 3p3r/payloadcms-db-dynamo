@@ -30,7 +30,7 @@ function matchGeoShape(actual: unknown, expected: unknown): boolean {
   return ring ? pointInPolygon(point, ring) : false
 }
 
-function extractPolygonRing(coordinates: unknown): PointCoordinates[] | null {
+export function extractPolygonRing(coordinates: unknown): PointCoordinates[] | null {
   if (!Array.isArray(coordinates)) return null
   const ring = (coordinates[0] ?? coordinates) as unknown[]
   if (!Array.isArray(ring)) return null

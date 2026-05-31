@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { collectIndexPaths, collectPointFields } from '../../src/schema/collectFields.js'
+import {
+  collectDeclaredIndexPaths,
+  collectIndexPaths,
+  collectPointFields,
+} from '../../src/schema/collectFields.js'
 
 describe('collectFields', () => {
   it('collects point field paths including nested groups', () => {
@@ -31,6 +35,15 @@ describe('collectFields', () => {
     expect(paths).toContain('slug')
     expect(paths).toContain('meta.code')
     expect(paths).toContain('email')
+  })
+
+  it('collectDeclaredIndexPaths only uses sanitizedIndexes', () => {
+    const paths = collectDeclaredIndexPaths({
+      slug: 'posts',
+      fields: [{ name: 'email', type: 'email' }],
+      sanitizedIndexes: [{ fields: ['title'] }],
+    } as never)
+    expect(paths).toEqual(['title'])
   })
 
   it('skips unnamed fields and non-point siblings inside groups', () => {

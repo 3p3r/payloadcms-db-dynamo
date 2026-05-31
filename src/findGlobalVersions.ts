@@ -8,9 +8,10 @@ import { queryMatching } from './utilities/queryMatching.js'
 
 export const findGlobalVersions: FindGlobalVersions = async function findGlobalVersions(
   this: DynamoAdapter,
-  { global, limit = 10, page = 1, pagination = true, sort, where },
+  args,
 ) {
-  const partition = this.resolveVersionsPartition(global)
+  const { global: globalSlug, limit = 10, page = 1, pagination = true, sort, where } = args
+  const partition = this.resolveVersionsPartition(globalSlug)
   const matched = await queryMatching(this, partition, where)
   applySorts(matched, sort)
 

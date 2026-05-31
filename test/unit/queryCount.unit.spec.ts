@@ -12,13 +12,19 @@ describe('queryCount', () => {
     vi.restoreAllMocks()
   })
 
+  it('counts all rows when where is empty', async () => {
+    const send = vi.fn().mockResolvedValue({ Count: 4 })
+    expect(await queryCount(mockAdapter({ send }), 'p', {})).toBe(4)
+    expect(send.mock.calls[0]![0].input.FilterExpression).toBeUndefined()
+  })
+
   it('paginates COUNT queries', async () => {
     const send = vi
       .fn()
       .mockResolvedValueOnce({ Count: 2, LastEvaluatedKey: { pk: 'p', sk: 'c' } })
-      .mockResolvedValueOnce({ Count: 3 })
+      .mockResolvedValueOnce({ Count: undefined })
     const total = await queryCount(mockAdapter({ send }), 'p', { title: { equals: 'x' } })
-    expect(total).toBe(5)
+    expect(total).toBe(2)
     expect(send).toHaveBeenCalledTimes(2)
     await expect(queryCount(mockAdapter({ docClient: undefined }), 'p', {})).rejects.toThrow(
       /docClient/,

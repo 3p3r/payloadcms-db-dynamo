@@ -73,7 +73,11 @@ Supports Payload request transactions via buffered `TransactWriteItems` (`beginT
 
 ## Query & data behavior
 
+- **Indexed lookups:** Declared collection indexes write `IDX#{slug}#{field}#{value}` rows; equality on an indexed field queries that partition instead of scanning the collection.
+- **List sorting:** `gsi1` (`COL#{slug}#LIST`) backs unfiltered lists; filtered lists still use partition `Query` + `FilterExpression`.
+- **Geo:** `point` fields write geohash rows (`GEO#…`) queried via the `geo-index` GSI using [dynamodb-geo](https://github.com/amazon-archives/dynamodb-geo)-style S2/geohash coverage (`dynamodb-geo-v3`).
 - **Where operators:** `equals`, comparisons, `in` / `not_in` / `all`, `exists`, `like` / `not_like` / `contains`, `and` / `or`, plus geo `near` / `within` / `intersects` on `point` fields.
+- **Updates:** Conditional `Put` on `updatedAt` for optimistic concurrency; index rows maintained on every write.
 - **Join fields:** Resolved on `find` / `findOne`.
 - **Strict writes:** Unknown fields in request bodies are stripped on write (same idea as strict SQL/ODM adapters), including nested groups, arrays, and blocks.
 

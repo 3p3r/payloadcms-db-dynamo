@@ -6,8 +6,29 @@ import { ensureTable } from '../../src/utilities/ensureTable.js'
 import { TEST_DDB_ENDPOINT } from '../__helpers/assertDbReachable.js'
 import { randomTableName } from '../__helpers/randomTableName.js'
 
+async function isDdbUp(): Promise<boolean> {
+  const client = new DynamoDBClient({
+    endpoint: TEST_DDB_ENDPOINT,
+    region: 'us-east-1',
+    credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
+    maxAttempts: 1,
+  })
+  try {
+    await client.send(new DescribeTableCommand({ TableName: '___probe___' }))
+    return true
+  } catch (err) {
+    const name = (err as { name?: string }).name
+    if (name === 'ResourceNotFoundException') return true
+    return false
+  } finally {
+    client.destroy()
+  }
+}
+
+const ddbUp = await isDdbUp()
+
 describe('ensureTable', () => {
-  it('creates a missing table then short-circuits when it already exists', async () => {
+  it.skipIf(!ddbUp)('creates a missing table then short-circuits when it already exists', async () => {
     const tableName = randomTableName('ensure')
     const client = new DynamoDBClient({
       endpoint: TEST_DDB_ENDPOINT,

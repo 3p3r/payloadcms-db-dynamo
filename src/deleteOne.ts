@@ -1,11 +1,13 @@
 import type { DeleteOne } from 'payload'
 import { adapterError, DOC_CLIENT_REQUIRED } from './packageMeta.js'
 
-import { DeleteCommand } from '@aws-sdk/lib-dynamodb'
+import { DeleteCommand, GetCommand } from '@aws-sdk/lib-dynamodb'
 
 import type { DynamoAdapter } from './types.js'
 
+import { deleteCollectionIndexes } from './index/applySecondaryWrites.js'
 import { findFirst } from './utilities/findFirst.js'
+import { dynamoSend } from './utilities/dynamoSend.js'
 import { stripInternalKeys } from './utilities/stripInternalKeys.js'
 import { whereToId } from './utilities/whereToId.js'
 
@@ -21,32 +23,36 @@ export const deleteOne: DeleteOne = async function deleteOne(
   const partition = this.resolvePartition(collection)
   const idFromWhere = whereToId(where)
 
-  // Fast path — pure id-equality lets us delete and capture the doc in one call.
+  let found: Record<string, unknown> | null = null
+
   if (idFromWhere !== null) {
-    const result = await docClient.send(
-      new DeleteCommand({
+    const result = await dynamoSend<{ Item?: Record<string, unknown> }>(
+      this,
+      req,
+      new GetCommand({
         TableName: this.tableName,
         Key: { pk: partition, sk: String(idFromWhere) },
-        ReturnValues: 'ALL_OLD',
+        ConsistentRead: true,
       }),
     )
-    if (returning === false) {
-      return null as never
-    }
-    return (result.Attributes ? stripInternalKeys(result.Attributes) : null) as never
+    found = result.Item ? stripInternalKeys(result.Item) : null
+  } else {
+    found = await findFirst(this, {
+      partition,
+      where,
+      ...(req ? { req } : {}),
+    })
   }
 
-  // Slow path — locate by query, then delete by composite key.
-  const found = await findFirst(this, {
-    partition,
-    where,
-    ...(req ? { req } : {}),
-  })
   if (!found) {
     return null as never
   }
 
-  await docClient.send(
+  await deleteCollectionIndexes(this, collection, found, req)
+
+  await dynamoSend(
+    this,
+    req,
     new DeleteCommand({
       TableName: this.tableName,
       Key: { pk: partition, sk: String(found['id']) },

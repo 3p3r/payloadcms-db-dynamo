@@ -20,6 +20,28 @@ describe('findFirst', () => {
     expect(row?.title).toBe('a')
   })
 
+  it('returns null when GetItem misses', async () => {
+    const send = vi.fn().mockResolvedValue({})
+    const row = await findFirst(adapterWithSend(send), {
+      partition: 'p',
+      where: { id: { equals: 'missing' } },
+    })
+    expect(row).toBeNull()
+  })
+
+  it('queries partition without filter when where is empty', async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [{ pk: 'p', sk: '1', title: 'first' }],
+    })
+    const row = await findFirst(adapterWithSend(send), {
+      partition: 'p',
+      where: {},
+    })
+    expect(row?.title).toBe('first')
+    const cmd = send.mock.calls[0]![0]
+    expect(cmd.input.FilterExpression).toBeUndefined()
+  })
+
   it('returns null for always-false filters', async () => {
     const send = vi.fn()
     const row = await findFirst(adapterWithSend(send), {

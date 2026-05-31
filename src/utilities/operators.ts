@@ -36,14 +36,15 @@ export const SUPPORTED_OPERATORS = new Set([
  * `Query` the partition without server-side filtering and apply
  * `matchesWhere` in memory.
  */
-export const JS_ONLY_OPERATORS = new Set([
-  'like',
-  'not_like',
-  'contains',
-  'all',
-  'near',
-  'within',
-  'intersects',
+/** Operators that cannot be pushed into DynamoDB `FilterExpression`. */
+export const JS_ONLY_OPERATORS = new Set(['like', 'not_like', 'contains', 'all'])
+
+/** Geo operators — indexed when alone on a point field; otherwise partition scan. */
+export const GEO_OPERATORS = new Set(['near', 'within', 'intersects'])
+
+export const FILTER_NON_PUSHABLE_OPERATORS = new Set([
+  ...JS_ONLY_OPERATORS,
+  ...GEO_OPERATORS,
 ])
 
 export const SUPPORTED_OPERATORS_DESCRIPTION = `${[...SUPPORTED_OPERATORS].join(', ')}, and, or`
@@ -73,7 +74,7 @@ export function whereHasJsOnlyOperator(where: undefined | Where): boolean {
     }
     if (!raw || typeof raw !== 'object') continue
     for (const op of Object.keys(raw)) {
-      if (JS_ONLY_OPERATORS.has(op)) return true
+      if (JS_ONLY_OPERATORS.has(op) || GEO_OPERATORS.has(op)) return true
     }
   }
   return false

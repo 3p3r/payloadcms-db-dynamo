@@ -29,7 +29,13 @@ export const find: Find = async function find(
   this: DynamoAdapter,
   { collection, joins, limit = 10, page = 1, pagination = true, req, sort, where },
 ) {
-  const matched = await queryMatching(this, this.resolvePartition(collection), where, req)
+  const matched = await queryMatching(
+    this,
+    this.resolvePartition(collection),
+    where,
+    req,
+    collection,
+  )
 
   if (collectionHasDrafts(this, collection)) {
     const supplements = await fetchDraftsOnlySupplements(this, collection, matched, where, req)

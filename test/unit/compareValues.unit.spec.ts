@@ -19,5 +19,6 @@ describe('compareValues', () => {
     expect(compareValues('a', 'b')).toBe(-1)
     expect(compareValues('same', 'same')).toBe(0)
     expect(compareValues(1, 2)).toBe(-1)
+    expect(compareValues(1, '1')).toBe(0)
   })
 })

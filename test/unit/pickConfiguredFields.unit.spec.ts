@@ -68,6 +68,11 @@ describe('pickConfiguredFields', () => {
     expect(out.topLeak).toBeUndefined()
   })
 
+  it('passes through group values when the group has no nested fields', () => {
+    const fields = [{ name: 'hero', type: 'group' }] as never
+    expect(pickConfiguredFields({ hero: { headline: 'h', leak: 1 } }, fields)).toEqual({ hero: {} })
+  })
+
   it('skips ui/join fields and honors extraAllowed only when present', () => {
     const fields = [
       { name: 'title', type: 'text' },

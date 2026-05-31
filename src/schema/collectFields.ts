@@ -12,7 +12,8 @@ export function collectPointFields(fields: Field[]): string[] {
   return paths
 }
 
-export function collectIndexPaths(config: SanitizedCollectionConfig): string[] {
+/** Index paths declared on the collection (unique / compound indexes). */
+export function collectDeclaredIndexPaths(config: SanitizedCollectionConfig): string[] {
   const paths = new Set<string>()
   for (const idx of config.sanitizedIndexes ?? []) {
     for (const field of idx.fields) {
@@ -25,6 +26,11 @@ export function collectIndexPaths(config: SanitizedCollectionConfig): string[] {
       }
     }
   }
+  return [...paths]
+}
+
+export function collectIndexPaths(config: SanitizedCollectionConfig): string[] {
+  const paths = new Set(collectDeclaredIndexPaths(config))
   walkFields(config.fields, '', (path) => {
     paths.add(path)
   })

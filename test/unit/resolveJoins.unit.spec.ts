@@ -65,7 +65,7 @@ describe('resolveJoins', () => {
     await resolveJoins(adapter, {
       collectionSlug: 'cats',
       docs: [doc],
-      joins: { posts: { limit: 0 }, unknown: {} },
+      joins: { posts: { limit: 2 }, unknown: {}, skipped: undefined as never },
     })
     expect((doc.posts as { docs: { title: string }[] }).docs).toHaveLength(1)
 
@@ -74,6 +74,16 @@ describe('resolveJoins', () => {
     await resolveJoins(adapter, { collectionSlug: 'cats', docs: [doc], joins: { orphan: {} } })
     expect(spy).not.toHaveBeenCalled()
 
+    vi.restoreAllMocks()
+  })
+
+  it('no-ops when collection config is missing', async () => {
+    const spy = vi.spyOn(queryMatchingModule, 'queryMatching')
+    await resolveJoins(
+      { payload: { collections: {} }, resolvePartition: (s: string) => s } as never,
+      { collectionSlug: 'cats', docs: [{ id: '1' }], joins: { related: {} } },
+    )
+    expect(spy).not.toHaveBeenCalled()
     vi.restoreAllMocks()
   })
 

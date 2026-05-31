@@ -23,7 +23,7 @@ export function buildCreateTableInput(tableName: string): CreateTableCommandInpu
     { AttributeName: 'gsi1sk', AttributeType: 'S' },
     { AttributeName: 'gsi2pk', AttributeType: 'S' },
     { AttributeName: 'gsi2sk', AttributeType: 'S' },
-    { AttributeName: 'geohash', AttributeType: 'N' },
+    { AttributeName: 'geohash', AttributeType: 'S' },
   ]
 
   const keySchema: KeySchemaElement[] = [

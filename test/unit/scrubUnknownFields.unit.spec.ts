@@ -70,6 +70,85 @@ describe('scrubUnknownFields', () => {
     expect(report.globalVersions.site?.scanned).toBe(1)
   })
 
+  it('preserves adapter index attributes when rewriting', async () => {
+    const send = mockSendByPartition({
+      docs: {
+        Items: [
+          {
+            pk: 'docs',
+            sk: '1',
+            title: 'ok',
+            leak: true,
+            gsi1pk: 'COL#docs#LIST',
+            gsi1sk: 'x#DOC#1',
+          },
+        ],
+      },
+    })
+    const db = mockAdapter({ send })
+    db.payload = {
+      collections: {
+        docs: { config: { fields: [{ name: 'title', type: 'text' }] } },
+      },
+      config: { globals: [] },
+    } as never
+    const report = await scrubUnknownFields({ db } as never)
+    expect(report.collections.docs?.modified).toBe(1)
+    const put = send.mock.calls.find((c) => c[0].constructor.name === 'PutCommand')
+    expect(put?.[0].input.Item?.gsi1pk).toBe('COL#docs#LIST')
+  })
+
+  it('skips idx and geo rows during scan', async () => {
+    const send = mockSendByPartition({
+      docs: {
+        Items: [
+          { pk: 'docs', sk: 'idx', entityType: 'idx' },
+          { pk: 'docs', sk: 'geo', entityType: 'geo' },
+        ],
+      },
+    })
+    const db = mockAdapter({ send })
+    db.payload = {
+      collections: {
+        docs: { config: { fields: [{ name: 'title', type: 'text' }] } },
+      },
+      config: { globals: [] },
+    } as never
+    const report = await scrubUnknownFields({ db } as never)
+    expect(report.collections.docs?.scanned).toBe(0)
+    expect(report.collections.docs?.modified).toBe(0)
+  })
+
+  it('preserves geohash adapter attributes', async () => {
+    const send = mockSendByPartition({
+      docs: {
+        Items: [
+          {
+            pk: 'docs',
+            sk: '1',
+            title: 'ok',
+            leak: true,
+            location_geohash: 'abc',
+          },
+        ],
+      },
+    })
+    const db = mockAdapter({ send })
+    db.payload = {
+      collections: {
+        docs: {
+          config: {
+            fields: [{ name: 'title', type: 'text' }, { name: 'location', type: 'point' }],
+          },
+        },
+      },
+      config: { globals: [] },
+    } as never
+    await scrubUnknownFields({ db } as never)
+    const put = send.mock.calls.find((c) => c[0].constructor.name === 'PutCommand')
+    expect(put?.[0].input.Item?.location_geohash).toBe('abc')
+  })
+
   it('no-ops when there are no collections or globals', async () => {
     const db = mockAdapter({ send: vi.fn().mockResolvedValue({ Items: [] }) })
     db.payload = { config: {} } as never

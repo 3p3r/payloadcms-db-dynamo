@@ -2,6 +2,8 @@ import type { Payload, SanitizedGlobalConfig } from 'payload'
 
 import { PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
 
+import { normalizeForDynamo } from './normalizeForDynamo.js'
+
 import { adapterError } from '../packageMeta.js'
 import type { DynamoAdapter } from '../types.js'
 
@@ -11,6 +13,28 @@ import {
 } from './pickConfiguredFields.js'
 import { ROW_RESERVED_KEYS } from './resolveSchema.js'
 import { stripInternalKeys } from './stripInternalKeys.js'
+
+const PRESERVED_ADAPTER_KEYS = [
+  'gsi1pk',
+  'gsi1sk',
+  'gsi2pk',
+  'gsi2sk',
+  'entityType',
+  'collection',
+  'field',
+  'docId',
+] as const
+
+function preservedAdapterAttrs(item: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const key of PRESERVED_ADAPTER_KEYS) {
+    if (item[key] !== undefined) out[key] = item[key]
+  }
+  for (const key of Object.keys(item)) {
+    if (key.endsWith('_geohash')) out[key] = item[key]
+  }
+  return out
+}
 
 /**
  * One-shot cleanup pass for rows that were written before write-time
@@ -114,18 +138,17 @@ async function scrubPartition(
     )
 
     for (const item of result.Items ?? []) {
+      if (item['entityType'] === 'idx' || item['entityType'] === 'geo') continue
       scanned++
       const sansInternal = stripInternalKeys(item)
       const projected = project(sansInternal)
-      if (stableStringify(sansInternal) !== stableStringify(projected)) {
-        // Re-attach pk/sk explicitly. They aren't part of the projection's
-        // domain (those keys are adapter-internal partition coordinates),
-        // and their values must come from the original item to keep the
-        // row addressable at the same key.
+      const preserved = preservedAdapterAttrs(item)
+      const merged = { ...projected, ...preserved }
+      if (stableStringify(sansInternal) !== stableStringify(merged)) {
         await adapter.docClient!.send(
           new PutCommand({
             TableName: adapter.tableName,
-            Item: { ...projected, pk: item['pk'], sk: item['sk'] },
+            Item: normalizeForDynamo({ ...merged, pk: item['pk'], sk: item['sk'] }),
           }),
         )
         modified++

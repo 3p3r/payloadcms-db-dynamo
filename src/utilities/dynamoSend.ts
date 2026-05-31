@@ -5,6 +5,7 @@ import {
   PutCommand as PutCommandClass,
   QueryCommand as QueryCommandClass,
   TransactWriteCommand,
+  UpdateCommand as UpdateCommandClass,
 } from '@aws-sdk/lib-dynamodb'
 
 import type { PartialPayloadRequest } from '../types.js'
@@ -37,6 +38,42 @@ export async function dynamoSend<T>(
         TableName: input.TableName,
         Item: item,
         ...(input.ConditionExpression ? { ConditionExpression: input.ConditionExpression } : {}),
+        ...(input.ExpressionAttributeNames
+          ? { ExpressionAttributeNames: input.ExpressionAttributeNames }
+          : {}),
+        ...(input.ExpressionAttributeValues
+          ? { ExpressionAttributeValues: input.ExpressionAttributeValues }
+          : {}),
+      },
+    })
+    return {} as T
+  }
+
+  if (command instanceof UpdateCommandClass) {
+    const input = command.input
+    const pk = String(input.Key?.['pk'])
+    const sk = String(input.Key?.['sk'])
+    const key = itemKey(pk, sk)
+    const prior = session.overlay.get(key)
+    const merged = prior
+      ? { ...prior, ...input.ExpressionAttributeValues }
+      : { pk, sk }
+    session.overlay.set(key, stripInternalKeys(merged))
+    session.deleted.delete(key)
+    session.transactItems.push({
+      Update: {
+        TableName: input.TableName,
+        Key: input.Key,
+        UpdateExpression: input.UpdateExpression!,
+        ...(input.ExpressionAttributeNames
+          ? { ExpressionAttributeNames: input.ExpressionAttributeNames }
+          : {}),
+        ...(input.ExpressionAttributeValues
+          ? { ExpressionAttributeValues: input.ExpressionAttributeValues }
+          : {}),
+        ...(input.ConditionExpression
+          ? { ConditionExpression: input.ConditionExpression }
+          : {}),
       },
     })
     return {} as T

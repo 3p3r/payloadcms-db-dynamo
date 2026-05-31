@@ -19,8 +19,9 @@ Developer setup and architecture notes for **payloadcms-db-dynamo** (npm package
 npm ci
 npm run build          # esbuild → dist/ + tsc declarations
 npm run docker:start   # DynamoDB Local on :8000
-npm test               # unit + integration, ≥95% coverage on src/
-npm run test:unit      # unit only (no DynamoDB)
+npm test               # unit + integration, ≥95% coverage on src/ (needs docker)
+npm run test:unit      # unit only, no DynamoDB (`vitest.unit.config.ts`)
+npm run test:unit:coverage
 npm run test:integration
 npm run typecheck:test
 ```
@@ -72,7 +73,7 @@ scripts/build.mjs    # esbuild bundle (not swc)
 ## Architecture (short)
 
 - **Single table:** `pk` = collection/global slug (or versions partition); `sk` = document id (globals use `sk === slug`).
-- **Reads:** `Query` on partition + optional `FilterExpression`; JS-only operators (`like`, geo, etc.) fetch partition and filter in memory.
+- **Reads:** inverted-index / `gsi1` list / geo-index GSI queries when possible; otherwise partition `Query` + `FilterExpression`; JS-only operators (`like`, etc.) scan in memory.
 - **Writes:** read-merge-`Put` with `pickConfiguredFields` so undeclared keys never persist.
 - **Versions:** separate `*_versions` partition; `latest` flag flipped via `TransactWriteItems` on create.
 

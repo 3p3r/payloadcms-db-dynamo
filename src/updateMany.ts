@@ -1,14 +1,11 @@
 import type { UpdateMany } from 'payload'
 import { adapterError, DOC_CLIENT_REQUIRED } from './packageMeta.js'
 
-import { PutCommand } from '@aws-sdk/lib-dynamodb'
-
 import type { DynamoAdapter } from './types.js'
 
 import { applySorts } from './utilities/applySorts.js'
-import { normalizeForDynamo } from './utilities/normalizeForDynamo.js'
 import { queryMatching } from './utilities/queryMatching.js'
-import { projectForCollection } from './utilities/resolveSchema.js'
+import { updateOne } from './updateOne.js'
 
 /**
  * v1 strategy: query-and-collect matches, sort, slice to `limit`, then
@@ -30,36 +27,22 @@ export const updateMany: UpdateMany = async function updateMany(
   }
 
   const partition = this.resolvePartition(collection)
-  const matched = await queryMatching(this, partition, where)
+  const matched = await queryMatching(this, partition, where, undefined, collection)
   applySorts(matched, sort)
 
   const targets = limit && limit > 0 ? matched.slice(0, limit) : matched
 
-  // Hoisted so every row in the batch shares one timestamp — keeps audit-style
-  // queries deterministic. Explicit `updatedAt` in `data` still wins.
   const updatedAt = data['updatedAt'] ?? new Date().toISOString()
 
   const updated = await Promise.all(
-    targets.map(async (target) => {
-      const merged: Record<string, unknown> = {
-        ...target,
-        ...data,
-        id: target['id'],
-        updatedAt,
-      }
-      const projected = projectForCollection(this, collection, merged)
-      await docClient.send(
-        new PutCommand({
-          TableName: this.tableName,
-          Item: normalizeForDynamo({
-            ...projected,
-            pk: partition,
-            sk: String(projected['id']),
-          }),
-        }),
-      )
-      return projected
-    }),
+    targets.map(async (target) =>
+      updateOne.call(this, {
+        collection,
+        id: String(target['id']),
+        data: { ...data, updatedAt },
+        returning: true,
+      }),
+    ),
   )
 
   return returning === false ? null : updated

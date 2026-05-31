@@ -1,7 +1,11 @@
 import type { Where } from 'payload'
 
 import { normalizeForDynamo } from './normalizeForDynamo.js'
-import { JS_ONLY_OPERATORS, SUPPORTED_OPERATORS, unsupportedOperatorError } from './operators.js'
+import {
+  FILTER_NON_PUSHABLE_OPERATORS,
+  SUPPORTED_OPERATORS,
+  unsupportedOperatorError,
+} from './operators.js'
 
 /**
  * Compile a Payload `Where` into a DynamoDB `FilterExpression` plus its
@@ -197,6 +201,6 @@ function operatorToExpression(
   expected: unknown,
   ctx: Ctx,
 ): Compiled {
-  if (JS_ONLY_OPERATORS.has(operator)) return ''
+  if (FILTER_NON_PUSHABLE_OPERATORS.has(operator)) return ''
   return DYNAMO_COMPARE_OPS[operator]!(path, expected, ctx)
 }

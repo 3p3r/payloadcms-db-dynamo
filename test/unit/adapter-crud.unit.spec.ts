@@ -18,7 +18,9 @@ describe('adapter CRUD edge paths', () => {
 
     const send = vi
       .fn()
-      .mockResolvedValueOnce({ Attributes: { pk: 'c', sk: '1', title: 'gone' } })
+      .mockResolvedValueOnce({ Item: { pk: 'c', sk: '1', id: '1', title: 'gone' } })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ Item: undefined })
       .mockResolvedValueOnce({})
     const adapter = mockAdapter({ send })
 

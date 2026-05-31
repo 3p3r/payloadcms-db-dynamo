@@ -28,7 +28,8 @@
     "docker:stop": "docker compose down",
     "docker:logs": "docker compose logs -f dynamodb-local",
     "test": "vitest run --coverage",
-    "test:unit": "vitest run test/unit",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:unit:coverage": "vitest run --config vitest.unit.config.ts --coverage",
     "test:watch": "vitest",
     "test:integration": "vitest run test/**/*.int.spec.ts",
     "typecheck:test": "tsc -p test/tsconfig.json"
@@ -63,6 +64,7 @@
     "@aws-sdk/client-dynamodb": "^3.1038.0",
     "@aws-sdk/lib-dynamodb": "^3.1038.0",
     "dynamodb-geo-v3": "^1.0.0",
+    "nodes2ts": "^2.0.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
