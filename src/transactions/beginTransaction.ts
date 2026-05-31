@@ -10,6 +10,9 @@ export const beginTransaction: BeginTransaction = async function beginTransactio
 ) {
   const id = uuid()
   this.transactionSessions ??= {}
+  if (this.sessions !== this.transactionSessions) {
+    this.sessions = this.transactionSessions
+  }
   const session: DynamoTransactionSession = {
     id,
     transactItems: [],

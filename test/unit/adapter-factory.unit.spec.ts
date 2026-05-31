@@ -2,6 +2,7 @@ import type { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { describe, expect, it } from 'vitest'
 
 import { dynamoAdapter } from '../../src/index.js'
+import { beginTransaction } from '../../src/transactions/beginTransaction.js'
 import { resolveTransactionId } from '../../src/transactions/getSession.js'
 
 describe('dynamoAdapter factory', () => {
@@ -22,6 +23,7 @@ describe('dynamoAdapter factory', () => {
     expect(adapter.ownsClient).toBe(false)
     expect(adapter.bulkOperationsSingleTransaction).toBe(true)
     expect(adapter.translateConfig.marshallOptions?.removeUndefinedValues).toBe(false)
+    expect(adapter.sessions).toBe(adapter.transactionSessions)
   })
 
   it('defaults without an injected client', () => {
@@ -30,6 +32,15 @@ describe('dynamoAdapter factory', () => {
     } as never)
     expect(adapter.ownsClient).toBe(true)
     expect(adapter.ensureTables).toBe(false)
+  })
+
+  it('sessions and transactionSessions stay the same store after beginTransaction', async () => {
+    const adapter = dynamoAdapter().init({
+      payload: { config: { collections: [], globals: [] } },
+    } as never)
+    const id = await beginTransaction.call(adapter)
+    expect(adapter.sessions).toBe(adapter.transactionSessions)
+    expect(adapter.sessions[String(id!)]).toBe(adapter.transactionSessions[String(id!)])
   })
 
   it('resolveTransactionId awaits promise ids', async () => {

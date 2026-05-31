@@ -92,6 +92,11 @@ export type PartialPayloadRequest = Partial<PayloadRequest>
  * resolved partition keys.
  */
 export interface DynamoAdapter extends Omit<BaseDatabaseAdapter, 'sessions'> {
+  /**
+   * Alias of `transactionSessions` for Payload's migration runners (`migrate`,
+   * `migrateDown`, etc.), which read `payload.db.sessions[id]`.
+   */
+  sessions: Record<string, import('./transactions/types.js').DynamoTransactionSession>
   /** Underlying low-level DynamoDB client. Populated by `connect`. */
   client: DynamoDBClient | undefined
   /** Document client wrapper around `client`. Populated by `connect`. */

@@ -53,7 +53,7 @@ export const migrateFresh: BaseDatabaseAdapter['migrateFresh'] = async function 
       await migration.up({
         payload,
         req,
-        session: this.transactionSessions?.[String(await req.transactionID!)],
+        session: this.sessions?.[String(await req.transactionID!)],
       })
       await payload.create({
         collection: 'payload-migrations',

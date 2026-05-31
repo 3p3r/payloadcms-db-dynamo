@@ -58,6 +58,7 @@ export function dynamoAdapter(args: Args = {}): DatabaseAdapterObj<DynamoAdapter
 
     const resolvePartition = (slug: string): string => slug
     const resolveVersionsPartition = (slug: string): string => `${slug}_versions`
+    const transactionSessions: DynamoAdapter['transactionSessions'] = {}
 
     return createDatabaseAdapter<DynamoAdapter>({
       name: NAME,
@@ -66,7 +67,8 @@ export function dynamoAdapter(args: Args = {}): DatabaseAdapterObj<DynamoAdapter
       payload,
       migrationDir,
       bulkOperationsSingleTransaction: args.bulkOperationsSingleTransaction ?? false,
-      transactionSessions: {},
+      transactionSessions,
+      sessions: transactionSessions,
 
       // ----- adapter-specific state -----
       clientConfig: args.clientConfig ?? {},

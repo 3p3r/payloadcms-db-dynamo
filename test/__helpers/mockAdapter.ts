@@ -24,10 +24,12 @@ export function mockAdapter(
     send?: ReturnType<typeof vi.fn>
   } = {},
 ): DynamoAdapter {
-  const { send, ...rest } = overrides
+  const { send, transactionSessions: txOverride, sessions: _sessions, ...rest } = overrides
+  const transactionSessions = txOverride ?? {}
   return bareAdapter({
     docClient: { send: send ?? vi.fn().mockResolvedValue({}) },
-    transactionSessions: {},
+    transactionSessions,
+    sessions: transactionSessions,
     payload: {
       collections: {},
       config: { globals: [] },
