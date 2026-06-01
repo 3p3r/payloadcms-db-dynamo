@@ -2,6 +2,8 @@
 
 DynamoDB database adapter for [Payload CMS](https://payloadcms.com). Stores collections, globals, and version rows in a **single-table** layout with GSIs for sorting, indexed lookups, and geo queries.
 
+> **Status:** this entire project is vibe coded in a weekend, but it has two full working kitchen sink examples checked in. *Use at your own risk*. I made this to be able to deploy Payload CMS into AWS Lambda with OpenNext and have its data backed into DynamoDB, to pay $0 when scaled to zero.
+
 ## Requirements
 
 - [Payload](https://payloadcms.com) `>=3.49.0 <5.0.0`
