@@ -27,6 +27,11 @@ export function invertedSk(docId: string): string {
   return String(docId)
 }
 
+/** gsi2 hash key for field-scoped reverse index lookups (all values for one indexed field). */
+export function invertedGsi2pk(slug: string, fieldPath: string): string {
+  return `IDX#${slug}#${fieldPath}`
+}
+
 export function searchNgramPk(slug: string, fieldPath: string, gram: string): string {
   return `NGM#${slug}#${fieldPath}#${gram}`
 }

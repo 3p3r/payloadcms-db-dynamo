@@ -5,6 +5,7 @@ import { collectDeclaredIndexPaths } from '../schema/collectFields.js'
 import { collectSearchIndexPaths } from '../schema/searchIndex.js'
 import type { DynamoAdapter } from '../types.js'
 import { buildFilterExpression } from './buildFilterExpression.js'
+import { extractReverseIndexWhere } from './extractReverseIndexWhere.js'
 import { extractSearchLikeWhere } from './extractSearchWhere.js'
 import { whereHasJsOnlyOperator } from './operators.js'
 
@@ -61,6 +62,15 @@ export type QueryPlan =
       fields: string[]
       remainder?: Where
     }
+  | {
+      kind: 'reverse-index'
+      collection: string
+      field: string
+      mode: 'exists' | 'not_equals' | 'not_in'
+      excludeValue?: unknown
+      excludeValues?: unknown[]
+      remainder?: Where
+    }
 
 export function extractIndexedEquals(
   where: Where | undefined,
@@ -108,6 +118,7 @@ export function canUseGsi1ListPlan(
   if (extractGeoClause(where)) return false
   if (extractIndexedEquals(where, indexPaths)) return false
   if (extractIndexedIn(where, indexPaths)) return false
+  if (extractReverseIndexWhere(where, indexPaths)) return false
   if (whereHasJsOnlyOperator(where)) return false
   if (buildFilterExpression(where) === null) return false
   return true
@@ -229,6 +240,19 @@ export function compileQuery(
       field: indexed.field,
       value: indexed.value,
       ...(indexed.remainder ? { remainder: indexed.remainder } : {}),
+    }
+  }
+
+  const reverseIndex = extractReverseIndexWhere(where, indexPaths)
+  if (reverseIndex && canPushFilter(reverseIndex.remainder)) {
+    return {
+      kind: 'reverse-index',
+      collection,
+      field: reverseIndex.field,
+      mode: reverseIndex.mode,
+      ...(reverseIndex.excludeValue !== undefined ? { excludeValue: reverseIndex.excludeValue } : {}),
+      ...(reverseIndex.excludeValues ? { excludeValues: reverseIndex.excludeValues } : {}),
+      ...(reverseIndex.remainder ? { remainder: reverseIndex.remainder } : {}),
     }
   }
 

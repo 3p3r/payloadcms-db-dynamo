@@ -32,4 +32,4 @@ Payload 4.x uses `next dev --webpack` (see [payload-4.x/README.md](./payload-4.x
 
 ## Shared schema
 
-Kitchen-sink definitions: [`shared/kitchenSink.ts`](./shared/kitchenSink.ts). After editing, run `npm run sync:shared` inside an example to refresh `src/kitchenSink.ts`.
+Kitchen-sink definitions live in [`shared/`](./shared/) and are imported directly by each example (`tsconfig` includes `../shared/**/*.ts`).

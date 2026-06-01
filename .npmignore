@@ -1,7 +1,6 @@
 # Source & tests (consumers use dist/ only)
 src/
 test/
-scripts/
 
 # Tooling & CI
 .github/

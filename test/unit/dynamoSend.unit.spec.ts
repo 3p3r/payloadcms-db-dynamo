@@ -1,9 +1,11 @@
 import {
   BatchGetCommand,
+  BatchWriteCommand,
   DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   TransactWriteCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb'
@@ -25,6 +27,61 @@ function sessionAdapter(session: DynamoTransactionSession) {
 }
 
 describe('dynamoSend — transaction overlay', () => {
+  it('merges overlay when Put targets the same key twice', async () => {
+    const session: DynamoTransactionSession = {
+      deleted: new Set(),
+      overlay: new Map(),
+      transactItems: [],
+    }
+    const adapter = sessionAdapter(session)
+    const req = { transactionID: 'tx1' }
+    await dynamoSend(
+      adapter,
+      req,
+      new PutCommand({
+        TableName: 't',
+        Item: { pk: 'p', sk: '1', title: 'first' },
+      }),
+    )
+    await dynamoSend(
+      adapter,
+      req,
+      new PutCommand({
+        TableName: 't',
+        Item: { pk: 'p', sk: '1', title: 'second', extra: true },
+      }),
+    )
+    const got = await dynamoSend(
+      adapter,
+      req,
+      new GetCommand({ TableName: 't', Key: { pk: 'p', sk: '1' } }),
+    )
+    expect(got.Item).toMatchObject({ title: 'second', extra: true })
+    expect(session.transactItems).toHaveLength(1)
+  })
+
+  it('buffers Put with optional expression attribute maps', async () => {
+    const session: DynamoTransactionSession = {
+      deleted: new Set(),
+      overlay: new Map(),
+      transactItems: [],
+    }
+    const adapter = sessionAdapter(session)
+    await dynamoSend(
+      adapter,
+      { transactionID: 'tx1' },
+      new PutCommand({
+        TableName: 't',
+        Item: { pk: 'p', sk: '1', title: 'local' },
+        ExpressionAttributeNames: { '#t': 'title' },
+        ExpressionAttributeValues: { ':t': 'local' },
+      }),
+    )
+    const put = session.transactItems[0]?.Put
+    expect(put?.ExpressionAttributeNames).toEqual({ '#t': 'title' })
+    expect(put?.ExpressionAttributeValues).toEqual({ ':t': 'local' })
+  })
+
   it('buffers Put, Get, Delete, Query, and TransactWrite', async () => {
     const session: DynamoTransactionSession = {
       deleted: new Set(),
@@ -305,6 +362,47 @@ describe('dynamoSend — transaction overlay', () => {
     expect(send).toHaveBeenCalled()
   })
 
+  it('passes BatchGet and BatchWrite through inside an active session', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Responses: { t: [] } })
+      .mockResolvedValueOnce({})
+    const session: DynamoTransactionSession = {
+      deleted: new Set(),
+      overlay: new Map(),
+      transactItems: [],
+    }
+    const adapter = mockAdapter({
+      send,
+      tableName: 't',
+      transactionSessions: { tx1: session },
+      sessions: { tx1: session },
+    })
+    const req = { transactionID: 'tx1' }
+    await dynamoSend(
+      adapter,
+      req,
+      new BatchGetCommand({
+        RequestItems: { t: { Keys: [{ pk: 'p', sk: '1' }] } },
+      }),
+    )
+    await dynamoSend(
+      adapter,
+      req,
+      new BatchWriteCommand({
+        RequestItems: { t: [{ DeleteRequest: { Key: { pk: 'p', sk: '1' } } }] },
+      }),
+    )
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+
+  it('throws for unsupported commands without a session', async () => {
+    const adapter = mockAdapter()
+    await expect(dynamoSend(adapter, undefined, new ScanCommand({ TableName: 't' }))).rejects.toThrow(
+      /Unsupported DynamoDB command$/,
+    )
+  })
+
   it('buffered delete without ReturnValues returns stub output', async () => {
     const session: DynamoTransactionSession = {
       deleted: new Set(),
@@ -318,6 +416,18 @@ describe('dynamoSend — transaction overlay', () => {
       new DeleteCommand({ TableName: 't', Key: { pk: 'p', sk: '1' } }),
     )
     expect(out).toEqual({ $metadata: { httpStatusCode: 200 } })
+  })
+
+  it('throws for unsupported commands inside a transaction', async () => {
+    const session: DynamoTransactionSession = {
+      deleted: new Set(),
+      overlay: new Map(),
+      transactItems: [],
+    }
+    const adapter = sessionAdapter(session)
+    await expect(
+      dynamoSend(adapter, { transactionID: 'tx1' }, new ScanCommand({ TableName: 't' })),
+    ).rejects.toThrow(/Unsupported DynamoDB command/)
   })
 
   it('throws when Put has no Item in a transaction', async () => {

@@ -105,6 +105,42 @@ describe('queryCount', () => {
     vi.restoreAllMocks()
   })
 
+  it('counts reverse-index via queryMatching', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [
+          { pk: 'IDX#items#email#a', sk: '1', docId: '1' },
+          { pk: 'IDX#items#email#b', sk: '2', docId: '2' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        Responses: {
+          t: [
+            { pk: 'items', sk: '1', id: '1' },
+            { pk: 'items', sk: '2', id: '2' },
+          ],
+        },
+      })
+    const adapter = mockAdapter({
+      send,
+      tableName: 't',
+      payload: {
+        collections: {
+          items: {
+            config: {
+              fields: [{ name: 'email', type: 'email' }],
+              sanitizedIndexes: [{ fields: ['email'], unique: true }],
+            },
+          },
+        },
+        config: { globals: [] },
+      } as never,
+    })
+    const count = await queryCount(adapter, 'items', { email: { exists: true } }, 'items')
+    expect(count).toBe(2)
+  })
+
   it('counts inverted pk without remainder', async () => {
     const send = vi.fn().mockResolvedValue({ Count: 2 })
     const adapter = mockAdapter({

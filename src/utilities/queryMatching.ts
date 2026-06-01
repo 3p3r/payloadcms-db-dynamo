@@ -9,12 +9,14 @@ import type { DynamoAdapter } from '../types.js'
 
 import { queryGeoDocIds } from '../geo/queryGeo.js'
 import {
+  invertedGsi2pk,
   invertedPk,
   listSpineGsi1pk,
   searchNgramPk,
   versionLatestGsi1pk,
   versionParentGsi1pk,
   GSI1_INDEX_NAME,
+  GSI2_INDEX_NAME,
 } from '../schema/keys.js'
 import { searchNgrams } from '../schema/searchIndex.js'
 import { batchGetCollectionDocs } from './batchGetDocs.js'
@@ -183,6 +185,82 @@ async function queryInvertedIndex(
   let docs = await batchGetCollectionDocs(adapter, collection, ids, req)
   if (remainder) {
     docs = docs.filter((row) => matchesWhere(row, remainder))
+  }
+  if (maxItems !== undefined && maxItems > 0) {
+    docs = docs.slice(0, maxItems)
+  }
+  return docs
+}
+
+async function queryGsi2ByPk(
+  adapter: DynamoAdapter,
+  gsi2pk: string,
+  req?: PartialPayloadRequest,
+): Promise<Record<string, unknown>[]> {
+  const items: Record<string, unknown>[] = []
+  let exclusiveStartKey: Record<string, unknown> | undefined
+
+  while (true) {
+    const result = await dynamoSend(
+      adapter,
+      req,
+      new QueryCommand({
+        TableName: adapter.tableName,
+        IndexName: GSI2_INDEX_NAME,
+        KeyConditionExpression: '#gpk = :gpk',
+        ExpressionAttributeNames: { '#gpk': 'gsi2pk' },
+        ExpressionAttributeValues: { ':gpk': gsi2pk },
+        ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+      }),
+    )
+    for (const item of result.Items ?? []) {
+      items.push(item)
+    }
+    if (!result.LastEvaluatedKey) break
+    exclusiveStartKey = result.LastEvaluatedKey
+  }
+
+  return items
+}
+
+function buildExcludedInvertedPks(
+  collection: string,
+  field: string,
+  plan: Extract<QueryPlan, { kind: 'reverse-index' }>,
+): Set<string> {
+  const excluded = new Set<string>()
+  if (plan.mode === 'not_equals' && plan.excludeValue !== undefined) {
+    excluded.add(invertedPk(collection, field, plan.excludeValue))
+  }
+  if (plan.mode === 'not_in' && plan.excludeValues) {
+    for (const value of plan.excludeValues) {
+      excluded.add(invertedPk(collection, field, value))
+    }
+  }
+  return excluded
+}
+
+async function queryReverseIndex(
+  adapter: DynamoAdapter,
+  plan: Extract<QueryPlan, { kind: 'reverse-index' }>,
+  req?: PartialPayloadRequest,
+  maxItems?: number,
+): Promise<Record<string, unknown>[]> {
+  const gsi2pk = invertedGsi2pk(plan.collection, plan.field)
+  const indexRows = await queryGsi2ByPk(adapter, gsi2pk, req)
+  const excludedPks = buildExcludedInvertedPks(plan.collection, plan.field, plan)
+  const idSet = new Set<string>()
+
+  for (const item of indexRows) {
+    const rowPk = String(item['pk'] ?? '')
+    if (excludedPks.size > 0 && excludedPks.has(rowPk)) continue
+    const docId = item['docId'] ?? item['sk']
+    if (docId) idSet.add(String(docId))
+  }
+
+  let docs = await batchGetCollectionDocs(adapter, plan.collection, [...idSet], req)
+  if (plan.remainder) {
+    docs = docs.filter((row) => matchesWhere(row, plan.remainder))
   }
   if (maxItems !== undefined && maxItems > 0) {
     docs = docs.slice(0, maxItems)
@@ -433,6 +511,8 @@ async function executePlan(
       )
     case 'inverted-in':
       return queryInvertedIn(adapter, plan.collection, plan.field, plan.values, plan.remainder, req, maxItems)
+    case 'reverse-index':
+      return queryReverseIndex(adapter, plan, req, maxItems)
     case 'search-ngram':
       return querySearchNgram(adapter, plan, where, req, maxItems)
     case 'gsi1-list':
@@ -462,7 +542,7 @@ async function executePlan(
 
 /**
  * Resolve matching collection documents using partition, inverted (IDX#),
- * GSI1 list spine, geo-index, or version gsi1 queries per `compileQuery`.
+ * gsi2 reverse index, GSI1 list spine, geo-index, or version gsi1 queries per `compileQuery`.
  */
 export async function queryMatching(
   adapter: DynamoAdapter,

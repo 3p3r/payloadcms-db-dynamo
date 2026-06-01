@@ -115,6 +115,7 @@ async function countPlan(
   switch (plan.kind) {
     case 'geo':
     case 'inverted-in':
+    case 'reverse-index':
     case 'search-ngram': {
       const matched = await queryMatching(adapter, partition, where, undefined, collection)
       return matched.length

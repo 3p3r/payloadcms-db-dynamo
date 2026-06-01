@@ -6,7 +6,6 @@ const CI = Boolean(process.env.CI)
 
 export default defineConfig({
   testDir: 'test/e2e',
-  testMatch: /kitchen-sink\.spec\.ts$/,
   fullyParallel: false,
   forbidOnly: CI,
   retries: CI ? 1 : 0,

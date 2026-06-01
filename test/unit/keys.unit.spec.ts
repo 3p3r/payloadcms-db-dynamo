@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   geoPk,
   geoSk,
+  invertedGsi2pk,
   invertedPk,
   listSpineGsi1pk,
   listSpineGsi1sk,
@@ -26,6 +27,7 @@ describe('schema/keys', () => {
 
   it('builds inverted and list spine keys', () => {
     expect(invertedPk('items', 'email', 'a@b.c')).toBe('IDX#items#email#a@b.c')
+    expect(invertedGsi2pk('items', 'email')).toBe('IDX#items#email')
     expect(listSpineGsi1pk('items')).toBe('COL#items#LIST')
     expect(listSpineGsi1sk('2024', 'id1')).toBe('2024#DOC#id1')
     expect(geoPk('places', 'loc', 12)).toBe('GEO#places#loc#12')

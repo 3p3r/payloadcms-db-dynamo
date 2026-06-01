@@ -72,6 +72,7 @@ export const ENTITY_KEY_TEMPLATES = {
   global: 'pk={globalSlug}, sk={globalSlug}',
   collectionVersion: 'pk={slug}_versions, sk={versionId}',
   invertedIndex: 'pk=IDX#{slug}#{path}#{value}, sk={id}',
+  reverseIndex: 'gsi2pk=IDX#{slug}#{path}, gsi2sk={docId}',
   listSpine: 'gsi1pk=COL#{slug}#LIST, gsi1sk={sortKey}#DOC#{id}',
   versionLatest: 'gsi1pk=COL#{slug}#VER#LATEST (pointer row), gsi1sk={updatedAt}#VER#{versionId}',
   versionParent: 'gsi1pk=VER#{slug}#PARENT#{parentId}, gsi1sk={updatedAt}#VER#{versionId}',

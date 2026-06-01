@@ -1,7 +1,7 @@
 import { getPayload } from 'payload'
 
 import config from './payload.config'
-import { seedCredentials, seedKitchenSink } from './seedKitchenSink'
+import { seedCredentials, seedKitchenSink } from '../../shared/seed.js'
 
 const run = async (): Promise<void> => {
   const payload = await getPayload({ config })

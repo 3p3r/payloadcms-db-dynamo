@@ -20,7 +20,6 @@
     "generate:types": "cross-env NODE_OPTIONS=--no-deprecation payload generate:types",
     "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
     "seed": "cross-env NODE_OPTIONS=--no-deprecation tsx src/seed.ts",
-    "sync:shared": "cp ../shared/kitchenSink.ts src/kitchenSink.ts && cp ../shared/seed.ts src/seedKitchenSink.ts",
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start"
   },
   "dependencies": {

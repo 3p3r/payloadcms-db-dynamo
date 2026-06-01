@@ -5,7 +5,6 @@ import {
   versionLatestPointerSk,
   versionParentGsi1pk,
 } from '../schema/keys.js'
-import type { DynamoAdapter } from '../types.js'
 
 export type VersionIndexProjection = {
   mainAttributes: Record<string, unknown>
@@ -65,16 +64,5 @@ export function projectVersionLatestPointerDelete(
   return {
     pk: versionLatestPointerPk(collectionSlug),
     sk: versionLatestPointerSk(versionId),
-  }
-}
-
-export function resolveVersionDocKeys(
-  adapter: DynamoAdapter,
-  collectionSlug: string,
-  versionRow: Record<string, unknown>,
-): { pk: string; sk: string } {
-  return {
-    pk: adapter.resolveVersionsPartition(collectionSlug),
-    sk: String(versionRow['id'] ?? versionRow['sk']),
   }
 }

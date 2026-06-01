@@ -92,7 +92,8 @@ Runtime dependencies: `debug`, `rc`, `exponential-backoff`, `lodash` (per-method
 
 ### Query paths (implementation)
 
-- **Indexed equality:** Declared collection indexes write `IDX#{slug}#{field}#{value}` rows; equality on an indexed field queries that partition instead of scanning the collection partition.
+- **Indexed equality (forward):** Declared collection indexes write `IDX#{slug}#{field}#{value}` rows; `equals` / `in` on an indexed field query that `pk` partition (consistent read).
+- **Indexed reverse (`gsi2`):** The same index rows set `gsi2pk=IDX#{slug}#{field}`; `exists`, `not_equals`, and `not_in` on a declared index query `gsi2` and hydrate docs (filtering excluded values via row `pk`).
 - **List sorting:** `gsi1` with `gsi1pk` = `COL#{slug}#LIST` and `gsi1sk` derived from the sort field + id; unfiltered lists use this GSI; filtered lists use partition `Query` + `FilterExpression`.
 - **Geo:** `point` fields write geohash rows (`GEO#…`) queried via the `geo-index` GSI ([dynamodb-geo-v3](https://www.npmjs.com/package/dynamodb-geo-v3) / S2 coverage).
 - **Search:** Admin list search uses n-gram rows (`entityType: ngm`) when `admin.listSearchableFields` / `useAsTitle` are configured.

@@ -3,9 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   projectVersionIndexes,
   projectVersionLatestPointerDelete,
-  resolveVersionDocKeys,
 } from '../../src/index/projectVersionIndexes.js'
-import { mockAdapter } from '../__helpers/mockAdapter.js'
 
 describe('projectVersionIndexes', () => {
   it('projects latest pointer and parent gsi1 on version row', () => {
@@ -53,17 +51,10 @@ describe('projectVersionIndexes', () => {
     expect(projection.deletes).toHaveLength(1)
   })
 
-  it('builds pointer delete key and resolves doc keys', () => {
-    const adapter = mockAdapter({
-      resolveVersionsPartition: (s: string) => `${s}_versions`,
-    })
+  it('builds pointer delete key', () => {
     expect(projectVersionLatestPointerDelete('posts', 'v1')).toEqual({
       pk: 'COL#posts#VER#LATEST',
       sk: 'REF#v1',
-    })
-    expect(resolveVersionDocKeys(adapter, 'posts', { id: 'v1' })).toEqual({
-      pk: 'posts_versions',
-      sk: 'v1',
     })
   })
 })

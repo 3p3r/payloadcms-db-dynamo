@@ -9,6 +9,7 @@ import {
   geoGsi2pk,
   geoPk,
   geoSk,
+  invertedGsi2pk,
   invertedPk,
   invertedSk,
   listSpineGsi1pk,
@@ -75,7 +76,7 @@ export function projectCollectionIndexes(
         entityType: 'idx',
         collection: slug,
         docId: id,
-        gsi2pk: `IDX#${slug}#${path}`,
+        gsi2pk: invertedGsi2pk(slug, path),
         gsi2sk: invertedSk(id),
       })
     }

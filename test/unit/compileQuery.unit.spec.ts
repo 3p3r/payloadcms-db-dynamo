@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { compileQuery } from '../../src/utilities/compileQuery.js'
+import {
+  canUseGsi1ListPlan,
+  compileQuery,
+  extractIndexedEquals,
+  extractIndexedIn,
+} from '../../src/utilities/compileQuery.js'
 import { mockAdapter } from '../__helpers/mockAdapter.js'
 
 describe('compileQuery', () => {
@@ -88,6 +93,86 @@ describe('compileQuery', () => {
     })
   })
 
+  it('plans reverse-index for indexed exists true', () => {
+    expect(compileQuery(adapter, 'items', { email: { exists: true } })).toMatchObject({
+      kind: 'reverse-index',
+      field: 'email',
+      mode: 'exists',
+    })
+  })
+
+  it('plans reverse-index with pushable remainder', () => {
+    expect(
+      compileQuery(adapter, 'items', {
+        email: { exists: true },
+        title: { equals: 'z' },
+      }),
+    ).toEqual({
+      kind: 'reverse-index',
+      collection: 'items',
+      field: 'email',
+      mode: 'exists',
+      remainder: { title: { equals: 'z' } },
+    })
+  })
+
+  it('plans reverse-index for indexed not_equals', () => {
+    expect(compileQuery(adapter, 'items', { email: { not_equals: 'a@b.c' } })).toMatchObject({
+      kind: 'reverse-index',
+      field: 'email',
+      mode: 'not_equals',
+      excludeValue: 'a@b.c',
+    })
+    expect(compileQuery(adapter, 'items', { email: { not_equals: false } })).toMatchObject({
+      kind: 'reverse-index',
+      excludeValue: false,
+    })
+  })
+
+  it('plans reverse-index for indexed not_in', () => {
+    expect(
+      compileQuery(adapter, 'items', { email: { not_in: ['a@b.c', 'c@d.e'] } }),
+    ).toMatchObject({
+      kind: 'reverse-index',
+      field: 'email',
+      mode: 'not_in',
+      excludeValues: ['a@b.c', 'c@d.e'],
+    })
+    expect(
+      compileQuery(adapter, 'items', {
+        email: { not_in: ['a@b.c'] },
+        title: { equals: 'z' },
+      }),
+    ).toEqual({
+      kind: 'reverse-index',
+      collection: 'items',
+      field: 'email',
+      mode: 'not_in',
+      excludeValues: ['a@b.c'],
+      remainder: { title: { equals: 'z' } },
+    })
+  })
+
+  it('falls back to partition when reverse-index remainder is not pushable', () => {
+    expect(
+      compileQuery(adapter, 'items', {
+        email: { exists: true },
+        title: { like: 'draft' },
+      }),
+    ).toMatchObject({
+      kind: 'partition',
+      where: { email: { exists: true }, title: { like: 'draft' } },
+    })
+  })
+
+  it('prefers inverted equals over reverse-index on same field', () => {
+    expect(
+      compileQuery(adapter, 'items', {
+        email: { equals: 'a@b.c', exists: true },
+      }),
+    ).toMatchObject({ kind: 'inverted' })
+  })
+
   it('uses partition query for version partitions without where', () => {
     expect(
       compileQuery(adapter, 'header_versions', undefined, { partition: 'header_versions' }),
@@ -104,6 +189,22 @@ describe('compileQuery', () => {
     ).toMatchObject({ kind: 'version-latest-gsi1', collection: 'posts' })
   })
 
+  it('plans version-parent gsi1 with pushable remainder', () => {
+    expect(
+      compileQuery(
+        adapter,
+        'posts',
+        { parent: { equals: 'p1' }, title: { equals: 'v' } },
+        { partition: 'posts_versions' },
+      ),
+    ).toEqual({
+      kind: 'version-parent-gsi1',
+      collection: 'posts',
+      parentId: 'p1',
+      where: { title: { equals: 'v' } },
+    })
+  })
+
   it('plans version-parent gsi1 for parent equals', () => {
     expect(
       compileQuery(
@@ -112,7 +213,35 @@ describe('compileQuery', () => {
         { parent: { equals: 'p1' } },
         { partition: 'posts_versions' },
       ),
-    ).toMatchObject({ kind: 'version-parent-gsi1', collection: 'posts', parentId: 'p1' })
+    ).toEqual({
+      kind: 'version-parent-gsi1',
+      collection: 'posts',
+      parentId: 'p1',
+    })
+  })
+
+  it('plans version-latest gsi1 with pushable remainder', () => {
+    expect(
+      compileQuery(
+        adapter,
+        'posts',
+        { latest: { equals: true }, title: { equals: 'draft' } },
+        { partition: 'posts_versions' },
+      ),
+    ).toEqual({
+      kind: 'version-latest-gsi1',
+      collection: 'posts',
+      where: { title: { equals: 'draft' } },
+    })
+  })
+
+  it('plans version-latest gsi1 without remainder property', () => {
+    expect(
+      compileQuery(adapter, 'posts', { latest: { equals: true } }, { partition: 'posts_versions' }),
+    ).toEqual({
+      kind: 'version-latest-gsi1',
+      collection: 'posts',
+    })
   })
 
   it('falls back to partition when version filter is not pushable', () => {
@@ -163,6 +292,42 @@ describe('compileQuery', () => {
       kind: 'partition',
       where: { email: { in: [] } },
     })
+  })
+
+  it('extractIndexedEquals and extractIndexedIn omit empty remainders', () => {
+    expect(extractIndexedEquals({ email: { equals: 'a@b.c' } }, ['email'])).toEqual({
+      field: 'email',
+      value: 'a@b.c',
+    })
+    expect(
+      extractIndexedEquals(
+        { email: { equals: 'a@b.c' }, title: { equals: 'x' } },
+        ['email'],
+      ),
+    ).toEqual({
+      field: 'email',
+      value: 'a@b.c',
+      remainder: { title: { equals: 'x' } },
+    })
+    expect(extractIndexedIn({ email: { in: ['a'] } }, ['email'])).toEqual({
+      field: 'email',
+      values: ['a'],
+    })
+    expect(
+      extractIndexedIn({ email: { in: ['a', 'b'] }, active: { equals: true } }, ['email']),
+    ).toEqual({
+      field: 'email',
+      values: ['a', 'b'],
+      remainder: { active: { equals: true } },
+    })
+  })
+
+  it('canUseGsi1ListPlan rejects reverse-index and indexed clauses', () => {
+    const paths = ['email']
+    expect(canUseGsi1ListPlan(adapter, 'items', undefined, paths)).toBe(true)
+    expect(canUseGsi1ListPlan(adapter, 'items', { email: { exists: true } }, paths)).toBe(false)
+    expect(canUseGsi1ListPlan(adapter, 'items', { email: { not_equals: 'a' } }, paths)).toBe(false)
+    expect(canUseGsi1ListPlan(adapter, 'items', { email: { not_in: ['a'] } }, paths)).toBe(false)
   })
 
   it('uses partition for version id lookup', () => {

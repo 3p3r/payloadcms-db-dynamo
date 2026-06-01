@@ -46,6 +46,24 @@ describe('collectFields', () => {
     expect(paths).toEqual(['title'])
   })
 
+  it('walks through non-point group fields when collecting points', () => {
+    const paths = collectPointFields([
+      {
+        name: 'venue',
+        type: 'group',
+        fields: [
+          { name: 'label', type: 'text' },
+          {
+            name: 'geo',
+            type: 'group',
+            fields: [{ name: 'pin', type: 'point' }],
+          },
+        ],
+      },
+    ] as never)
+    expect(paths).toEqual(['venue.geo.pin'])
+  })
+
   it('skips unnamed fields and non-point siblings inside groups', () => {
     const paths = collectPointFields([
       { type: 'row', fields: [{ name: 'pin', type: 'point' }] },

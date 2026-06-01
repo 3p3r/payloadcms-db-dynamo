@@ -2,35 +2,7 @@ import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynam
 import type { DynamoDBDocumentClient, TranslateConfig } from '@aws-sdk/lib-dynamodb'
 
 import type { AdapterRcConfig } from './config.js'
-import type {
-  ArrayField,
-  BaseDatabaseAdapter,
-  PayloadRequest,
-  BlocksField,
-  CheckboxField,
-  CodeField,
-  CollapsibleField,
-  CollectionSlug,
-  DateField,
-  EmailField,
-  Field,
-  GlobalSlug,
-  GroupField,
-  JoinField,
-  JSONField,
-  NumberField,
-  PointField,
-  RadioField,
-  RelationshipField,
-  RichTextField,
-  RowField,
-  SanitizedConfig,
-  SelectField,
-  TabsField,
-  TextareaField,
-  TextField,
-  UploadField,
-} from 'payload'
+import type { BaseDatabaseAdapter, PayloadRequest, CollectionSlug, GlobalSlug } from 'payload'
 
 /**
  * User-facing options for the `dynamoAdapter` factory.
@@ -128,46 +100,4 @@ export interface DynamoAdapter extends Omit<BaseDatabaseAdapter, 'sessions'> {
   bulkOperationsSingleTransaction: boolean
   /** Buffered DynamoDB transact items keyed by Payload transaction id */
   transactionSessions: Record<string, import('./transactions/types.js').DynamoTransactionSession>
-}
-
-export type BuildSchemaOptions = {
-  allowIDField?: boolean
-  disableUnique?: boolean
-  draftsEnabled?: boolean
-  indexSortableFields?: boolean
-}
-
-export type FieldGenerator<TSchema, TField> = {
-  config: SanitizedConfig
-  field: TField
-  options: BuildSchemaOptions
-  schema: TSchema
-}
-
-export type FieldGeneratorFunction<TSchema, TField extends Field> = (
-  args: FieldGenerator<TSchema, TField>,
-) => void
-
-export type FieldToSchemaMap<TSchema> = {
-  array: FieldGeneratorFunction<TSchema, ArrayField>
-  blocks: FieldGeneratorFunction<TSchema, BlocksField>
-  checkbox: FieldGeneratorFunction<TSchema, CheckboxField>
-  code: FieldGeneratorFunction<TSchema, CodeField>
-  collapsible: FieldGeneratorFunction<TSchema, CollapsibleField>
-  date: FieldGeneratorFunction<TSchema, DateField>
-  email: FieldGeneratorFunction<TSchema, EmailField>
-  group: FieldGeneratorFunction<TSchema, GroupField>
-  join: FieldGeneratorFunction<TSchema, JoinField>
-  json: FieldGeneratorFunction<TSchema, JSONField>
-  number: FieldGeneratorFunction<TSchema, NumberField>
-  point: FieldGeneratorFunction<TSchema, PointField>
-  radio: FieldGeneratorFunction<TSchema, RadioField>
-  relationship: FieldGeneratorFunction<TSchema, RelationshipField>
-  richText: FieldGeneratorFunction<TSchema, RichTextField>
-  row: FieldGeneratorFunction<TSchema, RowField>
-  select: FieldGeneratorFunction<TSchema, SelectField>
-  tabs: FieldGeneratorFunction<TSchema, TabsField>
-  text: FieldGeneratorFunction<TSchema, TextField>
-  textarea: FieldGeneratorFunction<TSchema, TextareaField>
-  upload: FieldGeneratorFunction<TSchema, UploadField>
 }

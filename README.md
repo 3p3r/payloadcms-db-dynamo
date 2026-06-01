@@ -78,7 +78,7 @@ Supports Payload request transactions (`beginTransaction` / `commitTransaction` 
 ## Query & writes
 
 - **Where:** `equals`, comparisons, `in` / `not_in` / `all`, `exists`, `like` / `not_like` / `contains`, `and` / `or`, plus geo `near` / `within` / `intersects` on `point` fields.
-- **Collections:** Declared indexes speed up equality filters; default list sorting uses the configured sort field (typically `createdAt`).
+- **Collections:** Declared indexes use forward `IDX#…#value` partitions for `equals` / `in`, and the `gsi2` reverse index for `exists` / `not_equals` / `not_in` on that field; default list sorting uses the configured sort field (typically `createdAt`).
 - **Geo:** `point` fields support radius and bounding-box style queries.
 - **Join fields:** Resolved on `find` / `findOne`.
 - **Updates:** Optimistic concurrency via `updatedAt`; unknown fields in request bodies are not persisted.

@@ -61,4 +61,17 @@ describe('compileQuery search-ngram', () => {
     })
     expect(plan.kind).toBe('partition')
   })
+
+  it('compileQuery search-ngram keeps pushable remainder', () => {
+    const adapter = searchAdapter()
+    const plan = compileQuery(adapter, 'posts', {
+      or: [{ title: { like: 'rob' } }],
+      published: { equals: true },
+    })
+    expect(plan).toMatchObject({
+      kind: 'search-ngram',
+      searchText: 'rob',
+      remainder: { published: { equals: true } },
+    })
+  })
 })

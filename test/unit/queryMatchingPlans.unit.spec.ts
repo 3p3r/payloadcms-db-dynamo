@@ -278,4 +278,203 @@ describe('queryMatching plans', () => {
       'IDX#',
     )
   })
+
+  it('queries gsi2 reverse index for indexed exists with remainder and maxItems', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [
+          { pk: 'IDX#items#email#a', sk: '1', docId: '1', gsi2pk: 'IDX#items#email' },
+          { pk: 'IDX#items#email#b', sk: '2', docId: '2', gsi2pk: 'IDX#items#email' },
+          { pk: 'IDX#items#email#c', sk: '', gsi2pk: 'IDX#items#email' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        Responses: {
+          t: [
+            { pk: 'items', sk: '1', id: '1', email: 'a', score: 1 },
+            { pk: 'items', sk: '2', id: '2', email: 'b', score: 5 },
+          ],
+        },
+      })
+    const adapter = mockAdapter({ send, tableName: 't', payload: basePayload })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { exists: true }, score: { greater_than: 3 } },
+      undefined,
+      'items',
+      1,
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.id).toBe('2')
+    expect(send.mock.calls[0]?.[0].input.IndexName).toBe('gsi2')
+  })
+
+  it('inverted-in skips index rows without doc id', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Items: [{ pk: 'IDX#items#email#a', sk: '' }] })
+      .mockResolvedValueOnce({ Responses: { t: [] } })
+    const adapter = mockAdapter({ send, tableName: 't', payload: basePayload })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { in: ['a'] } },
+      undefined,
+      'items',
+    )
+    expect(rows).toEqual([])
+  })
+
+  it('queries gsi2 reverse index for indexed not_in', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [
+          { pk: 'IDX#items#email#a', sk: '1', docId: '1' },
+          { pk: 'IDX#items#email#b', sk: '2', docId: '2' },
+          { pk: 'IDX#items#email#c', sk: '3', docId: '3' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        Responses: { t: [{ pk: 'items', sk: '3', id: '3', email: 'c' }] },
+      })
+    const adapter = mockAdapter({ send, tableName: 't', payload: basePayload })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { not_in: ['a', 'b'] } },
+      undefined,
+      'items',
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.email).toBe('c')
+  })
+
+  it('gsi2 reverse index skips rows without doc id', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [{ pk: 'IDX#items#email#a', sk: '', gsi2pk: 'IDX#items#email' }],
+      })
+      .mockResolvedValueOnce({ Responses: { t: [] } })
+    const adapter = mockAdapter({ send, tableName: 't', payload: basePayload })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { exists: true } },
+      undefined,
+      'items',
+    )
+    expect(rows).toEqual([])
+  })
+
+  it('returns empty when gsi2 query returns no Items key', async () => {
+    const send = vi.fn().mockResolvedValueOnce({})
+    const adapter = mockAdapter({ send, tableName: 't', payload: basePayload })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { exists: true } },
+      undefined,
+      'items',
+    )
+    expect(rows).toEqual([])
+  })
+
+  it('returns empty when gsi2 reverse index has no rows', async () => {
+    const send = vi.fn().mockResolvedValueOnce({ Items: [] })
+    const adapter = mockAdapter({ send, tableName: 't', payload: basePayload })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { exists: true } },
+      undefined,
+      'items',
+    )
+    expect(rows).toEqual([])
+    expect(send.mock.calls[0]?.[0].input.IndexName).toBe('gsi2')
+  })
+
+  it('paginates gsi2 reverse index queries', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [{ pk: 'IDX#items#email#a', sk: '1', docId: '1' }],
+        LastEvaluatedKey: { gsi2pk: 'IDX#items#email', gsi2sk: '1' },
+      })
+      .mockResolvedValueOnce({ Items: [{ pk: 'IDX#items#email#b', sk: '2', docId: '2' }] })
+      .mockResolvedValueOnce({
+        Responses: {
+          t: [
+            { pk: 'items', sk: '1', id: '1' },
+            { pk: 'items', sk: '2', id: '2' },
+          ],
+        },
+      })
+    const adapter = mockAdapter({ send, tableName: 't', payload: basePayload })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { exists: true } },
+      undefined,
+      'items',
+    )
+    expect(rows).toHaveLength(2)
+    expect(send.mock.calls[0]?.[0].input.ExclusiveStartKey).toBeUndefined()
+    expect(send.mock.calls[1]?.[0].input.ExclusiveStartKey).toBeDefined()
+  })
+
+  it('queries gsi2 reverse index excluding matching inverted pk on not_equals', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [
+          { pk: 'IDX#items#email#a@b.c', sk: '1', docId: '1' },
+          { pk: 'IDX#items#email#other@b.c', sk: '2', docId: '2' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        Responses: { t: [{ pk: 'items', sk: '2', id: '2', email: 'other@b.c' }] },
+      })
+    const adapter = mockAdapter({ send, tableName: 't', payload: basePayload })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { not_equals: 'a@b.c' } },
+      undefined,
+      'items',
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.email).toBe('other@b.c')
+  })
+
+  it('queries gsi2 reverse index for indexed not_equals', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [
+          { pk: 'IDX#items#email#a', sk: '1', docId: '1', gsi2pk: 'IDX#items#email' },
+          { pk: 'IDX#items#email#b', sk: '2', docId: '2', gsi2pk: 'IDX#items#email' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        Responses: { t: [{ pk: 'items', sk: '2', id: '2', email: 'b' }] },
+      })
+    const adapter = mockAdapter({ send, tableName: 't', payload: basePayload })
+    const rows = await queryMatching(
+      adapter,
+      'items',
+      { email: { not_equals: 'a' } },
+      undefined,
+      'items',
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.id).toBe('2')
+    expect(send.mock.calls[0]?.[0].input.IndexName).toBe('gsi2')
+    expect(send.mock.calls[0]?.[0].input.ExpressionAttributeValues?.[':gpk']).toBe(
+      'IDX#items#email',
+    )
+  })
 })

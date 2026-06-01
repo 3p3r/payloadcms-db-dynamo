@@ -9,7 +9,7 @@ import {
   kitchenSinkCollections,
   kitchenSinkGlobals,
   kitchenSinkLocalization,
-} from './kitchenSink'
+} from '../../shared/kitchenSink.js'
 import { Media } from './collections/Media'
 import { Users } from './collections/Users'
 
