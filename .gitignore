@@ -12,6 +12,12 @@ coverage/
 # Vitest / Vite cache
 .vite/
 
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+test/e2e/.auth/
+
 # TypeScript
 *.tsbuildinfo
 

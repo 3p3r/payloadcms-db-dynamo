@@ -49,6 +49,47 @@ describe('Payload transactions', () => {
     expect(found.totalDocs).toBe(0)
   })
 
+  it('create then login in one transaction (registerFirstUser shape)', async () => {
+    const tx = await handle.payload.db.beginTransaction()
+    const email = `first-${Date.now()}@example.com`
+    await handle.payload.create({
+      collection: 'users',
+      data: { email, password: 'test-password-123' },
+      overrideAccess: true,
+      req: { transactionID: tx } as never,
+    })
+    const login = await handle.payload.login({
+      collection: 'users',
+      data: { email, password: 'test-password-123' },
+      req: { transactionID: tx } as never,
+    })
+    await handle.payload.db.commitTransaction(tx!)
+    expect(login.token).toBeTruthy()
+  })
+
+  it('auth user create in a transaction (Put + Update on same item)', async () => {
+    const tx = await handle.payload.db.beginTransaction()
+    const created = await handle.payload.create({
+      collection: 'users',
+      data: {
+        email: `tx-user-${Date.now()}@example.com`,
+        password: 'test-password-123',
+      },
+      req: { transactionID: tx } as never,
+    })
+    await handle.payload.db.commitTransaction(tx!)
+
+    expect(created.email).toContain('@example.com')
+    const login = await handle.payload.login({
+      collection: 'users',
+      data: {
+        email: created.email,
+        password: 'test-password-123',
+      },
+    })
+    expect(login.token).toBeTruthy()
+  })
+
   it('read-your-writes inside an open transaction', async () => {
     const tx = await handle.payload.db.beginTransaction()
     const created = await handle.payload.create({

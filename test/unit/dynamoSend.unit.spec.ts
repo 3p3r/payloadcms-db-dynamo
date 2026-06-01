@@ -170,6 +170,95 @@ describe('dynamoSend — transaction overlay', () => {
     expect(session.transactItems[0]?.Update?.ConditionExpression).toBe('attribute_exists(pk)')
   })
 
+  it('coalesces Put then Update on the same item to one transact operation', async () => {
+    const session: DynamoTransactionSession = {
+      id: 'tx1',
+      deleted: new Set(),
+      overlay: new Map(),
+      transactItems: [],
+    }
+    const adapter = mockAdapter({
+      transactionSessions: { tx1: session },
+      sessions: { tx1: session },
+      tableName: 't',
+    })
+    const req = { transactionID: 'tx1' }
+
+    await dynamoSend(
+      adapter,
+      req,
+      new PutCommand({
+        TableName: 't',
+        Item: { pk: 'users', sk: '1', email: 'a@example.com' },
+      }),
+    )
+    await dynamoSend(
+      adapter,
+      req,
+      new UpdateCommand({
+        TableName: 't',
+        Key: { pk: 'users', sk: '1' },
+        UpdateExpression: 'SET #hash = :hash',
+        ExpressionAttributeNames: { '#hash': 'hash' },
+        ExpressionAttributeValues: { ':hash': 'secret' },
+      }),
+    )
+
+    expect(session.transactItems).toHaveLength(1)
+    expect(session.transactItems[0]?.Put?.Item).toMatchObject({
+      pk: 'users',
+      sk: '1',
+      email: 'a@example.com',
+      hash: 'secret',
+    })
+  })
+
+  it('coalesces create Put then writeDocument Put on the same item (registerFirstUser shape)', async () => {
+    const session: DynamoTransactionSession = {
+      id: 'tx1',
+      deleted: new Set(),
+      overlay: new Map(),
+      transactItems: [],
+    }
+    const adapter = mockAdapter({
+      transactionSessions: { tx1: session },
+      sessions: { tx1: session },
+      tableName: 't',
+    })
+    const req = { transactionID: 'tx1' }
+
+    await dynamoSend(
+      adapter,
+      req,
+      new PutCommand({
+        TableName: 't',
+        Item: { pk: 'users', sk: '1', email: 'a@example.com', updatedAt: 't1' },
+      }),
+    )
+    await dynamoSend(
+      adapter,
+      req,
+      new PutCommand({
+        TableName: 't',
+        Item: { pk: 'users', sk: '1', email: 'a@example.com', sessions: [{ id: 's1' }], updatedAt: 't2' },
+        ConditionExpression:
+          'attribute_exists(pk) AND (attribute_not_exists(updatedAt) OR updatedAt = :expectedUpdatedAt)',
+        ExpressionAttributeValues: { ':expectedUpdatedAt': 't1' },
+      }),
+    )
+
+    expect(session.transactItems).toHaveLength(1)
+    const put = session.transactItems[0]?.Put
+    expect(put?.ConditionExpression).toBe(
+      '(attribute_not_exists(updatedAt) OR updatedAt = :expectedUpdatedAt)',
+    )
+    expect(put?.Item).toMatchObject({
+      email: 'a@example.com',
+      sessions: [{ id: 's1' }],
+      updatedAt: 't2',
+    })
+  })
+
   it('buffers UpdateCommand in a transaction', async () => {
     const session = {
       id: 'tx1',

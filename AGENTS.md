@@ -23,6 +23,8 @@ npm test               # unit + integration, ≥95% coverage on src/ (needs dock
 npm run test:unit      # unit only, no DynamoDB (`vitest.unit.config.ts`)
 npm run test:unit:coverage
 npm run test:integration
+npm run test:e2e          # Playwright — kitchen-sink admin UI on examples/ (needs docker; Payload 4 needs Node 24+)
+npm run test:e2e:install  # one-time Chromium install for Playwright
 npm run typecheck:test
 ```
 
@@ -54,8 +56,9 @@ src/                 # adapter implementation
   transactions/      # buffered TransactWriteItems
   utilities/         # query, filter, projection
 test/
+  e2e/               # Playwright against examples (canonical real-world gate)
   unit/              # mocked, fast
-  **/*.int.spec.ts   # DynamoDB Local + Payload
+  **/*.int.spec.ts   # DynamoDB Local + minimal Payload configs (adapter coverage)
   fixtures/migrations/  # checked-in migration for migrateFresh test
   __helpers/         # initPayloadTest, mockAdapter, mockDynamoSend
 ```

@@ -6,5 +6,11 @@ export const config: Partial<Config> = {
       slug: 'items',
       fields: [{ name: 'title', type: 'text' }],
     },
+    {
+      slug: 'users',
+      auth: true,
+      admin: { useAsTitle: 'email' },
+      fields: [],
+    },
   ],
 }

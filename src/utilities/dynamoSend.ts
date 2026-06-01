@@ -12,6 +12,7 @@ import type {
   QueryCommand,
   QueryCommandOutput,
   TransactWriteCommand,
+  TransactWriteCommandInput,
   TransactWriteCommandOutput,
   UpdateCommand,
   UpdateCommandOutput,
@@ -38,6 +39,91 @@ import { itemKey } from '../transactions/types.js'
 import { stripInternalKeys } from './stripInternalKeys.js'
 
 const sendLog = log('dynamoSend')
+
+type TransactItem = NonNullable<TransactWriteCommandInput['TransactItems']>[number]
+
+/** DynamoDB allows at most one transact operation per table item (pk + sk). */
+function transactItemKey(item: TransactItem): string | undefined {
+  const table =
+    item.Put?.TableName ??
+    item.Update?.TableName ??
+    item.Delete?.TableName ??
+    item.ConditionCheck?.TableName
+  const key =
+    item.Put?.Item ?? item.Update?.Key ?? item.Delete?.Key ?? item.ConditionCheck?.Key
+  if (!table || !key || typeof key !== 'object') return undefined
+  const pk = key['pk']
+  const sk = key['sk']
+  if (pk === undefined || sk === undefined) return undefined
+  return `${table}\0${String(pk)}\0${String(sk)}`
+}
+
+function upsertTransactItem(session: DynamoTransactionSession, item: TransactItem): void {
+  const key = transactItemKey(item)
+  if (key) {
+    session.transactItems = session.transactItems.filter(
+      (existing) => transactItemKey(existing) !== key,
+    )
+  }
+  session.transactItems.push(item)
+}
+
+/** Drop `attribute_exists(pk)` — invalid when create+update coalesce to one Put in a transaction. */
+function stripAttributeExistsPkCondition(condition: string | undefined): string | undefined {
+  if (!condition) return undefined
+  let expr = condition.trim()
+  expr = expr.replace(/^attribute_exists\s*\(\s*pk\s*\)\s+AND\s+/i, '')
+  expr = expr.replace(/\s+AND\s+attribute_exists\s*\(\s*pk\s*\)/i, '')
+  if (/^attribute_exists\s*\(\s*pk\s*\)$/i.test(expr)) return undefined
+  return expr || undefined
+}
+
+function mergeCoalescedPutCondition(
+  priorCondition: string | undefined,
+  nextCondition: string | undefined,
+): string | undefined {
+  if (!nextCondition) return priorCondition
+  if (!priorCondition) return stripAttributeExistsPkCondition(nextCondition)
+  return nextCondition
+}
+
+function findPriorTransactPut(
+  session: DynamoTransactionSession,
+  tableName: string | undefined,
+  pk: string,
+  sk: string,
+): TransactItem['Put'] | undefined {
+  const lookup = `${tableName}\0${pk}\0${sk}`
+  return session.transactItems.find((item) => transactItemKey(item) === lookup)?.Put
+}
+
+/** Apply a simple `SET a = :a, #b = :b` update expression onto a buffered item. */
+function applyUpdateSetToItem(
+  item: Record<string, unknown>,
+  input: UpdateCommand['input'],
+): Record<string, unknown> {
+  const out = { ...item }
+  const names = input.ExpressionAttributeNames ?? {}
+  const values = input.ExpressionAttributeValues ?? {}
+  const expr = input.UpdateExpression ?? ''
+  const setClause = /^SET\s+(.+)$/is.exec(expr.trim())?.[1]
+  if (!setClause) return out
+
+  for (const assignment of setClause.split(',')) {
+    const part = assignment.trim()
+    const eq = part.match(/^(.+?)\s*=\s*(.+)$/)
+    if (!eq?.[1] || !eq[2]) continue
+    let attr = eq[1].trim()
+    const valueRef = eq[2].trim()
+    if (attr.startsWith('#')) {
+      attr = names[attr] ?? attr.slice(1)
+    }
+    if (valueRef.startsWith(':')) {
+      out[attr] = values[valueRef]
+    }
+  }
+  return out
+}
 
 export type DynamoSendCommand =
   | BatchGetCommand
@@ -208,13 +294,23 @@ function bufferPut(session: DynamoTransactionSession, command: PutCommand): PutC
   const pk = String(row['pk'])
   const sk = String(row['sk'])
   const key = itemKey(pk, sk)
+  const priorOverlay = session.overlay.get(key)
+  const priorPut = findPriorTransactPut(session, input.TableName, pk, sk)
+  const mergedOverlay = stripInternalKeys({ ...priorOverlay, ...row })
   session.deleted.delete(key)
-  session.overlay.set(key, stripInternalKeys({ ...row }))
-  session.transactItems.push({
+  session.overlay.set(key, mergedOverlay)
+
+  const conditionExpression = mergeCoalescedPutCondition(
+    priorPut?.ConditionExpression,
+    input.ConditionExpression,
+  )
+  const mergedItem = { ...mergedOverlay, pk, sk }
+
+  upsertTransactItem(session, {
     Put: {
       TableName: input.TableName,
-      Item: item,
-      ...(input.ConditionExpression ? { ConditionExpression: input.ConditionExpression } : {}),
+      Item: mergedItem,
+      ...(conditionExpression ? { ConditionExpression: conditionExpression } : {}),
       ...(input.ExpressionAttributeNames
         ? { ExpressionAttributeNames: input.ExpressionAttributeNames }
         : {}),
@@ -232,12 +328,35 @@ function bufferUpdate(session: DynamoTransactionSession, command: UpdateCommand)
   const sk = String(input.Key?.['sk'])
   const key = itemKey(pk, sk)
   const prior = session.overlay.get(key)
+  const priorPut = findPriorTransactPut(session, input.TableName, pk, sk)
   const merged = prior
-    ? { ...prior, ...input.ExpressionAttributeValues }
-    : { pk, sk }
+    ? applyUpdateSetToItem(prior, input)
+    : applyUpdateSetToItem({ pk, sk }, input)
   session.overlay.set(key, stripInternalKeys(merged))
   session.deleted.delete(key)
-  session.transactItems.push({
+
+  if (priorPut) {
+    const conditionExpression = mergeCoalescedPutCondition(
+      priorPut.ConditionExpression,
+      input.ConditionExpression,
+    )
+    upsertTransactItem(session, {
+      Put: {
+        TableName: input.TableName,
+        Item: { ...merged, pk, sk },
+        ...(conditionExpression ? { ConditionExpression: conditionExpression } : {}),
+        ...(input.ExpressionAttributeNames
+          ? { ExpressionAttributeNames: input.ExpressionAttributeNames }
+          : {}),
+        ...(input.ExpressionAttributeValues
+          ? { ExpressionAttributeValues: input.ExpressionAttributeValues }
+          : {}),
+      },
+    })
+    return stubUpdateOutput()
+  }
+
+  upsertTransactItem(session, {
     Update: {
       TableName: input.TableName,
       Key: input.Key,
@@ -262,7 +381,7 @@ function bufferDelete(session: DynamoTransactionSession, command: DeleteCommand)
   const prior = session.overlay.get(key)
   session.deleted.add(key)
   session.overlay.delete(key)
-  session.transactItems.push({
+  upsertTransactItem(session, {
     Delete: {
       TableName: input.TableName,
       Key: input.Key,
@@ -306,7 +425,9 @@ function bufferTransact(
   command: TransactWriteCommand,
 ): TransactWriteCommandOutput {
   const items = command.input.TransactItems ?? []
-  session.transactItems.push(...items)
+  for (const item of items) {
+    upsertTransactItem(session, item)
+  }
   for (const item of items) {
     if (item.Put?.Item) {
       const row = item.Put.Item as Record<string, unknown>

@@ -44,3 +44,34 @@ jobs:
         env:
           CI: true
           PAYLOAD_DDB_TEST_PORT: 8000
+
+  e2e:
+    runs-on: ubuntu-latest
+    # Payload 4.x example requires Node 24+ (see examples/payload-4.x/package.json engines).
+    services:
+      dynamodb-local:
+        image: amazon/dynamodb-local:3.0.0
+        ports:
+          - 8000:8000
+        options: >-
+          --entrypoint java
+          -e JAVA_OPTS=-Xmx256m
+        command: -jar DynamoDBLocal.jar -inMemory -sharedDb
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+      - name: Wait for DynamoDB Local
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000 || sleep 1
+          done
+      - run: npm run test:e2e
+        env:
+          CI: true
+          PAYLOAD_DDB_TEST_PORT: 8000
