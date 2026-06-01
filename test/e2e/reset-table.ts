@@ -6,7 +6,7 @@ import {
   waitUntilTableNotExists,
 } from '@aws-sdk/client-dynamodb'
 
-import { buildCreateTableInput } from '../../dist/schema/tableDefinition.js'
+import { buildCreateTableInput } from '../../src/schema/tableDefinition.js'
 import { TEST_DDB_ENDPOINT } from '../__helpers/assertDbReachable.js'
 
 function dynamoClient(): DynamoDBClient {

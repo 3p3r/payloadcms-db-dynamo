@@ -102,7 +102,7 @@ await payload.destroy()
 Migration files receive `{ payload, req, session }` from Payload. For TypeScript migrations, import the argument types:
 
 ```ts
-import type { MigrateDownArgs, MigrateUpArgs } from 'payloadcms-db-dynamo/migration-utils'
+import type { MigrateDownArgs, MigrateUpArgs } from 'payloadcms-db-dynamo'
 
 export async function up({ payload }: MigrateUpArgs) {
   // ...

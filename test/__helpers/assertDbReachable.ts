@@ -14,7 +14,7 @@ export const TEST_DDB_ENDPOINT = `http://${HOST}:${PORT}`
  * finished initializing — the first adapter call then races and fails. A
  * real API call closes that gap.
  */
-async function probeOnce(): Promise<string | true> {
+export async function probeDynamoOnce(): Promise<string | true> {
   const client = new DynamoDBClient({
     endpoint: TEST_DDB_ENDPOINT,
     region: 'us-east-1',
@@ -50,7 +50,7 @@ export async function assertDbReachable(): Promise<void> {
   let lastErr = 'unknown error'
 
   while (Date.now() < deadline) {
-    const result = await probeOnce()
+    const result = await probeDynamoOnce()
     if (result === true) return
     lastErr = result
     await new Promise((r) => setTimeout(r, 250))

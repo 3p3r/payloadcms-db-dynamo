@@ -13,6 +13,7 @@ import {
   saveDocument,
   searchCollectionList,
   selectRelationshipOption,
+  selectBlockInDrawer,
   switchLocale,
   uploadMedia,
   expectVisible,
@@ -125,7 +126,7 @@ export function registerKitchenSinkSuite(projectName: 'payload-3' | 'payload-4')
       await page.getByRole('button', { name: /add tag/i }).click({ timeout: MAX_MS })
       await fillField(page, /label/i, 'doc-tag')
       await page.getByRole('button', { name: /add section/i }).click({ timeout: MAX_MS })
-      await page.getByText(/^text$/i).click({ timeout: MAX_MS })
+      await selectBlockInDrawer(page, /^text$/i)
       await fillTextarea(page, /body/i, 'Block body')
       await saveDocument(page)
       await expectVisible(page, docTitle)

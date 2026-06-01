@@ -3,6 +3,7 @@ node_modules/
 
 # Build output (published via npm pack / CI)
 dist/
+.build-types/
 
 # Test & coverage
 coverage/
@@ -47,4 +48,5 @@ src/payload-generated-dynamodb.json
 examples/**/node_modules/
 examples/**/.next/
 examples/**/.env
+examples/**/media/
 !examples/**/.env.example

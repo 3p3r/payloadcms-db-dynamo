@@ -1,5 +1,5 @@
 import type { TranslateConfig } from '@aws-sdk/lib-dynamodb'
-import rc = require('rc')
+import rc from 'rc'
 
 import type { Args } from './types.js'
 

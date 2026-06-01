@@ -10,7 +10,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export default async function globalSetup(): Promise<void> {
   await assertDbReachable()
 
-  execSync('npm run build', { cwd: root, stdio: 'inherit' })
   execSync('npm install --prefix examples/payload-3.x --no-audit --no-fund', {
     cwd: root,
     stdio: 'inherit',

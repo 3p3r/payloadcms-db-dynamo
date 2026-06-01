@@ -2,6 +2,11 @@
 
 Developer setup and architecture notes for **payloadcms-db-dynamo** (npm package name). End-user documentation lives in [README.md](./README.md).
 
+## Conventions (agents)
+
+- **No ad hoc scripts.** Do not add files under `scripts/` or other one-off `.mjs`/`.sh` helpers. Use `package.json` scripts (esbuild/tsc CLI, `npm-run-all`, small shell fragments), existing test helpers under `test/__helpers/`, or extend an established module in `src/`.
+- **No `&&` / `||` in `package.json` scripts.** Chain steps with `npm-run-all` (sequential `npm-run-all a b c` or `npm-run-all foo:*`). Use `test/__helpers/` for conditional logic (e.g. `docker:ensure`).
+
 ## Package identity
 
 - **npm name:** `payloadcms-db-dynamo` (unscoped)
@@ -17,8 +22,9 @@ Developer setup and architecture notes for **payloadcms-db-dynamo** (npm package
 
 ```bash
 npm ci
-npm run build          # esbuild glob in package.json → dist/ + tsc declarations
-npm run docker:start   # DynamoDB Local on :8000
+npm run build          # bundled dist/index.js + dist/index.d.ts
+npm run docker:ensure  # start DynamoDB Local only if :8000 is not already up (CI-safe)
+npm run docker:start   # force docker compose up
 npm test               # unit + integration, ≥95% coverage on src/ (needs docker)
 npm run test:unit      # unit only, no DynamoDB (`vitest.unit.config.ts`)
 npm run test:unit:coverage
@@ -67,7 +73,8 @@ Runtime dependencies: `debug`, `rc`, `exponential-backoff`, `lodash` (per-method
 
 ## Build & publish
 
-- **Build:** `esbuild src/**/*.ts` (via `package.json` script) → `dist/`; `tsc --emitDeclarationOnly` emits `.d.ts`.
+- **Build:** `npm run build` — `build:clean` then `build:adapter`. Examples use `build:adapter` only (no clean) so parallel `predev` does not `rm -rf dist/` while Next reads `dist/index.js`. `build:source:*` / `build:types:*` — bundle → `dist/index.js` + `dist/index.d.ts`. Migration types (`MigrateUpArgs`, `MigrateDownArgs`) export from the main entry only.
+- **DynamoDB Local:** `docker:ensure` runs `test/__helpers/ensureDynamodbLocal.ts` (probe via `ListTables`, then `docker:start` + `assertDbReachable` if needed).
 - **Publish:** `package.json` `"files": ["dist"]`; `.npmignore` excludes source and tests. `prepublishOnly` runs `npm run build`.
 - Dry run: `npm pack --dry-run`
 

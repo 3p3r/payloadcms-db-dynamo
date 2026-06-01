@@ -10,10 +10,6 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./migration-utils": {
-      "import": "./dist/exports/migration-utils.js",
-      "types": "./dist/exports/migration-utils.d.ts"
     }
   },
   "files": [
@@ -22,10 +18,20 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npm-run-all build:*",
-    "build:source": "esbuild 'src/**/*.ts' 'src/*.ts' --outdir=dist --outbase=src --bundle=false --platform=node --format=esm --target=node20 --sourcemap --log-level=info",
-    "build:types": "tsc --emitDeclarationOnly",
+    "build": "npm-run-all build:clean build:adapter",
+    "build:adapter": "npm-run-all build:source build:types",
+    "build:clean": "rm -rf dist",
+    "build:source": "npm-run-all build:source:mkdir build:source:bundle",
+    "build:source:mkdir": "mkdir -p dist",
+    "build:source:bundle": "esbuild src/index.ts --bundle --packages=external --external:payload --platform=node --format=esm --target=node20 --sourcemap --outfile=dist/index.js",
+    "build:types": "npm-run-all build:types:tsc build:types:bundle build:types:strip-export build:types:augment build:types:clean",
+    "build:types:tsc": "tsc --emitDeclarationOnly --outDir .build-types",
+    "build:types:bundle": "dts-bundle-generator --no-check -o dist/index.d.ts .build-types/index.d.ts",
+    "build:types:strip-export": "sed -i '/^export {};$/d' dist/index.d.ts",
+    "build:types:augment": "printf '\\ndeclare module '\\''payload'\\'' {\\n  export interface DatabaseAdapter extends DynamoAdapter {}\\n}\\n' >> dist/index.d.ts",
+    "build:types:clean": "rm -rf .build-types",
     "prepublishOnly": "npm run build",
+    "docker:ensure": "tsx test/__helpers/ensureDynamodbLocal.ts",
     "docker:start": "docker compose up -d dynamodb-local",
     "docker:stop": "docker compose down",
     "test": "vitest run --coverage",
@@ -33,7 +39,8 @@
     "test:unit:coverage": "vitest run --config vitest.unit.config.ts --coverage",
     "test:watch": "vitest",
     "test:integration": "vitest run test/**/*.int.spec.ts",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm-run-all build e2e:playwright",
+    "e2e:playwright": "playwright test",
     "test:e2e:install": "playwright install chromium",
     "typecheck:test": "tsc -p test/tsconfig.json",
     "example:3x": "npm run dev --prefix examples/payload-3.x",
@@ -86,9 +93,11 @@
     "@types/rc": "^1.2.4",
     "@playwright/test": "^1.52.0",
     "@vitest/coverage-v8": "^3.0.0",
+    "dts-bundle-generator": "^9.5.1",
     "esbuild": "^0.25.0",
     "npm-run-all": "^4.1.5",
     "payload": "^3.84.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.8.3",
     "vitest": "^3.0.0"
   }

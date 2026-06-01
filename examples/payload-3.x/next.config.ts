@@ -9,6 +9,7 @@ const dirname = path.dirname(__filename)
 const adapterPackage = path.resolve(dirname, '../..')
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ['127.0.0.1'],
   serverExternalPackages: ['rc', 'debug'],
   images: {
     localPatterns: [

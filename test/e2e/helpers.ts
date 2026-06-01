@@ -118,13 +118,38 @@ export async function selectRelationshipOption(
 }
 
 export async function switchLocale(page: Page, locale: 'en' | 'fr'): Promise<void> {
-  await page.getByRole('button', { name: /locale/i }).click({ timeout: ACTION_MS })
-  const localeBtn = page.getByRole('button', { name: new RegExp(`^${locale}$`, 'i') })
-  if ((await localeBtn.count()) > 0) {
-    await localeBtn.first().click({ timeout: ACTION_MS })
+  const pill = page.getByRole('button', { name: new RegExp(`^${locale}$`, 'i') })
+  if (await pill.isVisible()) {
+    await pill.click({ timeout: ACTION_MS })
+    await expect(page.getByText(new RegExp(`— ${locale}`, 'i')).first()).toBeVisible({ timeout: MAX_MS })
     return
   }
-  await page.getByRole('option', { name: new RegExp(`^${locale}$`, 'i') }).click({ timeout: ACTION_MS })
+
+  await page.getByRole('button', { name: /locale/i }).click({ timeout: ACTION_MS })
+  const popupOption = page
+    .locator('.popup')
+    .getByRole('button', { name: new RegExp(`^${locale}$`, 'i') })
+  if ((await popupOption.count()) > 0) {
+    await popupOption.first().click({ timeout: ACTION_MS })
+  } else {
+    await page.locator(`[data-locale="${locale}"]`).click({ timeout: ACTION_MS })
+  }
+  await expect(page.getByText(new RegExp(`— ${locale}`, 'i')).first()).toBeVisible({ timeout: MAX_MS })
+}
+
+/** Pick a block type in the open blocks drawer (Payload 3) or dialog (Payload 4). */
+export async function selectBlockInDrawer(page: Page, blockLabel: RegExp | string): Promise<void> {
+  const name = blockLabel instanceof RegExp ? blockLabel : new RegExp(`^${blockLabel}$`, 'i')
+  const panel = page
+    .locator('.blocks-drawer')
+    .or(page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: /add section/i }) }))
+  await expect(panel.first()).toBeVisible({ timeout: MAX_MS })
+  await panel.first().getByRole('button', { name }).click({ timeout: ACTION_MS })
+  const insert = panel.first().getByRole('button', { name: /^insert$/i })
+  if ((await insert.count()) > 0) {
+    await expect(insert).toBeEnabled({ timeout: MAX_MS })
+    await insert.click({ timeout: ACTION_MS })
+  }
 }
 
 export async function uploadMedia(page: Page, alt: string): Promise<void> {

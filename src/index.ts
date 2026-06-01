@@ -46,6 +46,7 @@ export type { AdapterRcConfig } from './config.js'
 export type { Args, DynamoAdapter } from './types.js'
 export { scrubUnknownFields } from './utilities/scrubUnknownFields.js'
 export type { ScrubReport } from './utilities/scrubUnknownFields.js'
+export type { MigrateDownArgs, MigrateUpArgs } from './exports/migration-utils.js'
 
 const NAME = 'dynamodb'
 
