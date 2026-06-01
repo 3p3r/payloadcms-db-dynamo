@@ -1,12 +1,16 @@
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { initPayloadTest, type TestHandle } from '../__helpers/initPayload.js'
 import { config } from './config.js'
 
+const migrationDir = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/empty-migrations')
+
 let handle: TestHandle
 
 beforeAll(async () => {
-  handle = await initPayloadTest('migrations', config)
+  handle = await initPayloadTest('migrations', config, { migrationDir })
 })
 
 afterAll(async () => {

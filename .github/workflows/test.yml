@@ -65,6 +65,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Install kitchen-sink example dependencies
+        run: npm run e2e:install-examples
       - run: npx playwright install chromium --with-deps
       - name: Wait for DynamoDB Local
         run: |

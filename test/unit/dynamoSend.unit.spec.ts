@@ -13,7 +13,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { DynamoTransactionSession } from '../../src/transactions/types.js'
 import { dynamoSend } from '../../src/utilities/dynamoSend.js'
-import { mockAdapter } from '../__helpers/mockAdapter.js'
+import { bareAdapter, mockAdapter } from '../__helpers/mockAdapter.js'
+import { DOC_CLIENT_REQUIRED } from '../../src/packageMeta.js'
 
 function sessionAdapter(session: DynamoTransactionSession) {
   return mockAdapter({
@@ -394,6 +395,56 @@ describe('dynamoSend — transaction overlay', () => {
       }),
     )
     expect(send).toHaveBeenCalledTimes(2)
+  })
+
+  it('throws when docClient is missing outside a session', async () => {
+    await expect(
+      dynamoSend(
+        bareAdapter(),
+        undefined,
+        new GetCommand({ TableName: 't', Key: { pk: 'p', sk: '1' } }),
+      ),
+    ).rejects.toThrow(DOC_CLIENT_REQUIRED)
+  })
+
+  it('ignores non-SET UpdateExpression when coalescing overlay', async () => {
+    const session: DynamoTransactionSession = {
+      deleted: new Set(),
+      overlay: new Map([['p\x001', { pk: 'p', sk: '1', title: 'keep' }]]),
+      transactItems: [],
+    }
+    const adapter = sessionAdapter(session)
+    await dynamoSend(
+      adapter,
+      { transactionID: 'tx1' },
+      new UpdateCommand({
+        TableName: 't',
+        Key: { pk: 'p', sk: '1' },
+        UpdateExpression: 'REMOVE title',
+      }),
+    )
+    expect(session.overlay.get('p\x001')).toMatchObject({ title: 'keep' })
+  })
+
+  it('applies SET assignments that use ExpressionAttributeNames', async () => {
+    const session: DynamoTransactionSession = {
+      deleted: new Set(),
+      overlay: new Map([['p\x001', { pk: 'p', sk: '1' }]]),
+      transactItems: [],
+    }
+    const adapter = sessionAdapter(session)
+    await dynamoSend(
+      adapter,
+      { transactionID: 'tx1' },
+      new UpdateCommand({
+        TableName: 't',
+        Key: { pk: 'p', sk: '1' },
+        UpdateExpression: 'SET #label = :label',
+        ExpressionAttributeNames: { '#label': 'title' },
+        ExpressionAttributeValues: { ':label': 'named' },
+      }),
+    )
+    expect(session.overlay.get('p\x001')).toMatchObject({ title: 'named' })
   })
 
   it('throws for unsupported commands without a session', async () => {
