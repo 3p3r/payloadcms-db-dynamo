@@ -73,10 +73,10 @@ Runtime dependencies: `debug`, `rc`, `exponential-backoff`, `lodash` (per-method
 
 ## Build & publish
 
-- **Build:** `npm run build` — `build:clean` then `build:adapter`. Examples use `build:adapter` only (no clean) so parallel `predev` does not `rm -rf dist/` while Next reads `dist/index.js`. `build:source:*` / `build:types:*` — bundle → `dist/index.js` + `dist/index.d.ts`. Migration types (`MigrateUpArgs`, `MigrateDownArgs`) export from the main entry only.
+- **Build:** `npm run build` — `build:clean` then `build:adapter`. Examples use `build:adapter` only (no clean) so parallel `predev` does not `rm -rf dist/` while Next reads `dist/index.js`. `build:source:*` / `build:types:*` / `build:release` — minified bundle + sourcemap → `dist/index.js`, `dist/index.d.ts`, minimal `dist/package.json`, and copies of `README.md` + `LICENSE`. Migration types (`MigrateUpArgs`, `MigrateDownArgs`) export from the main entry only. `build:release` runs `build/writeDistPackageJson.ts`.
 - **DynamoDB Local:** `docker:ensure` runs `test/__helpers/ensureDynamodbLocal.ts` (probe via `ListTables`, then `docker:start` + `assertDbReachable` if needed).
-- **Publish:** `package.json` `"files": ["dist"]`; `.npmignore` excludes source and tests. `prepublishOnly` runs `npm run build`.
-- Dry run: `npm pack --dry-run`
+- **Publish (dist-first):** After `npm run build`, publish from `dist/` (`cd dist && npm publish`). `dist/package.json` has publish entry points (`./index.js`, `./index.d.ts`), runtime `dependencies` / `peerDependencies`, and no dev scripts or devDependencies. Dry run: `cd dist && npm pack --dry-run`.
+- **Publish (root, legacy):** Root `package.json` `"files": ["dist", "README.md", "LICENSE"]`; `.npmignore` excludes source and tests. `prepublishOnly` runs `npm run build`.
 
 ## Coverage
 
